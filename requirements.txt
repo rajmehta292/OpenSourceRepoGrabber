@@ -1,0 +1,43 @@
+# OpenSource Repo Grabber - Dependencies
+
+# GUI Framework
+customtkinter>=5.2.0
+
+# HTTP Requests
+requests>=2.31.0
+
+# Database
+sqlalchemy>=2.0.0
+
+# Data Models
+pydantic>=2.5.0
+
+# Markdown Rendering
+markdown>=3.5.0
+
+# WebView2 Browser
+pywebview>=5.0.0
+
+# Date/Time Handling
+python-dateutil>=2.8.0
+
+# Threading/Scheduling
+APScheduler>=3.10.0
+
+# JSON Handling
+orjson>=3.9.0
+
+# Caching
+diskcache>=5.6.0
+
+# GitHub API
+PyGithub>=2.1.0
+
+# Version Parsing
+packaging>=23.0
+
+# Rich Console Output
+rich>=13.7.0
+
+# Error Handling
+tenacity>=8.2.0

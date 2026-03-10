@@ -7,7 +7,7 @@ Recently upgraded with **Project Oracle**, featuring:
 - **Deep Architectural Audits**: Full project analysis using multi-file context.
 - **Smart Tagging**: AI-powered project categorization.
 - **Analysis Agent**: Specialized `kimi-k2.5:cloud` integration for elite code explanation.
-- **Earthy Glassmorphism**: A beautiful, Jony Ive-inspired UI overhaul.
+- **Earthy Glassmorphism**: A beautiful, inspired UI overhaul.
 
 ![OSRG Preview](https://via.placeholder.com/1200x800.png?text=OpenSource+Repo+Grabber+UI)
 

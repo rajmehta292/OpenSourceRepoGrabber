@@ -2,6 +2,7 @@
 Database operations for OpenSource Repo Grabber
 """
 import sqlite3
+import logging
 from typing import List, Optional, Tuple
 from datetime import datetime
 from contextlib import contextmanager
@@ -9,11 +10,14 @@ from contextlib import contextmanager
 import config
 from models import Repository, Release, Commit, Contributor, RepoCategory
 
+logger = logging.getLogger(__name__)
+
 
 class Database:
     def __init__(self, db_path: str = None):
         self.db_path = db_path or str(config.DB_PATH)
         self._init_db()
+        self._migrate_db()
 
     @contextmanager
     def _get_connection(self):
@@ -56,6 +60,8 @@ class Database:
                     category TEXT NOT NULL,
                     last_scanned TEXT,
                     readme_content TEXT,
+                    architectural_audit TEXT,
+                    smart_tags TEXT,
                     trending_stars INTEGER DEFAULT 0
                 )
             """)
@@ -127,6 +133,23 @@ class Database:
                 ON repositories(license_spdx_id)
             """)
 
+    def _migrate_db(self):
+        """Add missing columns for Project Oracle"""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            # Check for architectural_audit
+            cursor.execute("PRAGMA table_info(repositories)")
+            columns = [info['name'] for info in cursor.fetchall()]
+            
+            if 'architectural_audit' not in columns:
+                logger.info("Migrating database: adding architectural_audit column")
+                cursor.execute("ALTER TABLE repositories ADD COLUMN architectural_audit TEXT")
+            
+            if 'smart_tags' not in columns:
+                logger.info("Migrating database: adding smart_tags column")
+                cursor.execute("ALTER TABLE repositories ADD COLUMN smart_tags TEXT")
+
     def save_repository(self, repo: Repository) -> bool:
         """Save or update a repository"""
         with self._get_connection() as conn:
@@ -139,8 +162,8 @@ class Database:
                     stars, forks, watchers, open_issues, license,
                     license_spdx_id, language, topics, created_at,
                     updated_at, pushed_at, category, last_scanned,
-                    readme_content, trending_stars
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    readme_content, architectural_audit, smart_tags, trending_stars
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 repo.id, repo.name, repo.full_name, repo.description,
                 repo.html_url, repo.clone_url, repo.stars, repo.forks,
@@ -149,6 +172,7 @@ class Database:
                 repo.created_at.isoformat(), repo.updated_at.isoformat(),
                 repo.pushed_at.isoformat(), repo.category.value,
                 repo.last_scanned.isoformat(), repo.readme_content,
+                repo.architectural_audit, ",".join(repo.smart_tags) if repo.smart_tags else "",
                 repo.trending_stars
             ))
             return True
@@ -182,6 +206,9 @@ class Database:
                 topics = row['topics'].split(",") if row['topics'] else []
                 topics = [t for t in topics if t]
 
+                tags = row['smart_tags'].split(",") if row['smart_tags'] else []
+                tags = [t for t in tags if t]
+
                 repo = Repository(
                     id=row['id'],
                     name=row['name'],
@@ -203,6 +230,8 @@ class Database:
                     category=RepoCategory(row['category']),
                     last_scanned=datetime.fromisoformat(row['last_scanned']),
                     readme_content=row['readme_content'],
+                    architectural_audit=row['architectural_audit'],
+                    smart_tags=tags,
                     trending_stars=row['trending_stars']
                 )
                 repos.append(repo)
@@ -228,6 +257,9 @@ class Database:
             topics = row['topics'].split(",") if row['topics'] else []
             topics = [t for t in topics if t]
 
+            tags = row['smart_tags'].split(",") if row['smart_tags'] else []
+            tags = [t for t in tags if t]
+
             return Repository(
                 id=row['id'],
                 name=row['name'],
@@ -249,6 +281,8 @@ class Database:
                 category=RepoCategory(row['category']),
                 last_scanned=datetime.fromisoformat(row['last_scanned']),
                 readme_content=row['readme_content'],
+                architectural_audit=row['architectural_audit'],
+                smart_tags=tags,
                 trending_stars=row['trending_stars']
             )
 

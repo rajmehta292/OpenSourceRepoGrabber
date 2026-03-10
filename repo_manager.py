@@ -295,6 +295,9 @@ class RepoManager:
     
     def list_repos(self, license_filter: str = None) -> List[dict]:
         """List all repositories, optionally filtered by license folder"""
+        from database import get_database
+        db = get_database()
+        
         repos = []
         
         if license_filter:
@@ -325,12 +328,24 @@ class RepoManager:
                     except:
                         pass
                     
-                    repos.append({
+                    # Cross-reference with DB for tags and audit
+                    # Repo name on disk is 'owner_name'
+                    repo_data = {
                         "name": item.name,
                         "path": str(item),
                         "license": folder_name,
-                        "last_update": last_update
-                    })
+                        "last_update": last_update,
+                        "smart_tags": [],
+                        "architectural_audit": None
+                    }
+                    
+                    # Try to find in DB (full_name might be matches by restoring /)
+                    db_repo = db.get_repository(full_name=item.name.replace("_", "/", 1))
+                    if db_repo:
+                        repo_data["smart_tags"] = db_repo.smart_tags
+                        repo_data["architectural_audit"] = db_repo.architectural_audit
+                    
+                    repos.append(repo_data)
         
         return repos
     
@@ -349,6 +364,70 @@ class RepoManager:
                 except:
                     pass
         return None
+
+    def get_project_context(self, repo_path: str) -> dict:
+        """
+        Extract project structure and key architectural files for AI analysis.
+        Returns dict with file_tree and key_files (name: content)
+        """
+        path = Path(repo_path)
+        if not path.exists():
+            return {}
+
+        context = {
+            "file_tree": [],
+            "key_files": {}
+        }
+
+        # Key architectural files to look for
+        anchor_files = {
+            "package.json", "requirements.txt", "pyproject.toml", 
+            "docker-compose.yml", "Dockerfile", "main.py", "index.js",
+            "app.py", "go.mod", "cargo.toml", "pom.xml", "makefile"
+        }
+
+        # Exclude patterns
+        exclude_dirs = {".git", "node_modules", "__pycache__", "venv", "dist", "build", ".idea", ".vscode"}
+        sensitive_patterns = {".env", ".key", ".pem", "secrets", "password", "token", "credentials", ".config", ".p12", ".pfx"}
+        
+        try:
+            for root, dirs, files in os.walk(path):
+                # Modify dirs in-place to skip excluded directories
+                dirs[:] = [d for d in dirs if d not in exclude_dirs]
+                
+                rel_root = os.path.relpath(root, path)
+                if rel_root == ".":
+                    rel_root = ""
+                
+                for f in files:
+                    file_name_lower = f.lower()
+                    file_rel_path = os.path.join(rel_root, f)
+                    
+                    # Security: Skip sensitive files
+                    if any(p in file_name_lower for p in sensitive_patterns):
+                        continue
+                        
+                    context["file_tree"].append(file_rel_path)
+                    
+                    # Capture anchor file content
+                    if file_name_lower in anchor_files:
+                        file_path = Path(root) / f
+                        try:
+                            # Efficiency: Only capture first 5KB to prevent context bloat
+                            # and ensure we aren't reading massive binary files
+                            if file_path.stat().st_size > 1024 * 1024: # 1MB limit for safety
+                                content = "[File too large for context extraction]"
+                            else:
+                                content = file_path.read_text(encoding="utf-8", errors="ignore")[:5000]
+                            context["key_files"][file_rel_path] = content
+                        except:
+                            pass
+        except Exception as e:
+            logger.error(f"Error extracting context for {repo_path}: {e}")
+
+        # Limit tree to first 200 files
+        context["file_tree"] = context["file_tree"][:200]
+        return context
     
     def open_in_explorer(self, repo_path: str):
         """Open repo folder in Windows Explorer"""

@@ -41,6 +41,8 @@ class Repository(BaseModel):
     category: RepoCategory
     last_scanned: datetime = Field(default_factory=datetime.now)
     readme_content: Optional[str] = None
+    architectural_audit: Optional[str] = None
+    smart_tags: List[str] = Field(default_factory=list)
     trending_stars: int = 0  # Stars gained this week for trending repos
 
 

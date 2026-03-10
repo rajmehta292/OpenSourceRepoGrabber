@@ -37,35 +37,28 @@
 
 ### 2.3 Visual Design
 
-#### Color Palette
-- **Primary Background:** #1a1a2e (Deep Navy)
-- **Secondary Background:** #16213e (Dark Blue)
-- **Card Background:** #0f3460 (Medium Blue)
-- **Accent Color:** #e94560 (Coral Red)
-- **Success Color:** #00d9a0 (Mint Green)
-- **Warning Color:** #ffc107 (Amber)
-- **Text Primary:** #ffffff (White)
-- **Text Secondary:** #a0a0a0 (Gray)
-- **Border Color:** #2a2a4a (Muted Purple)
+#### Color Palette (Earthy Glassmorphism)
+- **Primary Background:** #F2F5F0 (Light Mode) / #1A1F1B (Dark Mode)
+- **Secondary Background:** #E8EDE6 (Light Mode) / #2D362F (Dark Mode)
+- **Card Background:** #FFFFFF (Light Mode) / #252A26 (Dark Mode)
+- **Accent Color (Sage):** #5E6C54
+- **Success Color:** #8BA888
+- **Earthy Sand:** #D9C5B2
+- **Text Primary:** #1A1F1B (Light) / #F2F5F0 (Dark)
+- **Text Secondary:** #5E6C54
+- **Border Color:** #D1D9CD (Glass refinement)
 
 #### Typography
-- **Font Family:** Segoe UI, system default
-- **Heading 1:** 24px, Bold
-- **Heading 2:** 18px, SemiBold
-- **Body:** 14px, Regular
-- **Caption:** 12px, Regular
-- **Monospace (Code):** Consolas, 13px
-
-#### Spacing System
-- **Base Unit:** 8px
-- **Card Padding:** 16px
-- **Section Margin:** 24px
-- **Element Gap:** 12px
+- **Font Family:** "Inter", "Segoe UI", system default
+- **Heading 1:** 28px, Bold (sidebar titles)
+- **Body:** 14px, Medium
+- **Tags:** 10px, SemiBold
 
 #### Visual Effects
-- **Card Shadows:** 0 4px 12px rgba(0,0,0,0.3)
-- **Hover Effects:** Brightness increase 10%, border glow
-- **Transitions:** 200ms ease-in-out
+- **Corner Radius:** 16px (Universal)
+- **Glassmorphism:** Translucency (85% opacity), backdrop blur (10px)
+- **Borders:** Thin (1px), subtle contrast
+- **Transitions:** 300ms cubic-bezier(0.4, 0, 0.2, 1)
 - **Scrollbars:** Custom styled, thin, accent colored
 
 ### 2.4 UI Components
@@ -169,20 +162,30 @@ For each tracked repository, collect:
 - Copy response button
 - Clear button
 
-#### 3.1.4 Ollama Integration
+#### 3.1.4 Project Oracle (AI Intelligence)
 
-**Available Models:** llama3.2, qwen2.5, mistral (free cloud models)
+**Context Extraction Logic:**
+- Recursive file tree generation (top 200 files).
+- Multi-file context mining (package.json, pyproject.toml, docker-compose.yml, etc.).
+- Content capture (first 5KB) to prevent context window overflow.
 
-**Features:**
-- Explain code: Take code snippet, return detailed explanation
-- Summarize project: Give overview of repo based on readme
-- Answer questions: Ask about tracked projects
+**Architectural Audit Agent:**
+- Pattern Identification (MVC, Hexagonal, etc.).
+- Technical Debt & Bottleneck Analysis.
+- Strategic technical roadmap generation.
 
-**Implementation:**
-- Local Ollama server connection (localhost:11434)
-- Fallback: Display message if Ollama not available
-- Model selector dropdown
-- Temperature/max tokens configuration
+**Smart Tags:**
+- High-relevance, auto-generated project markers.
+- Persistent storage in database for quick filtering.
+
+#### 3.1.5 Ollama Integration
+
+**Models:** `kimi-k2.5:cloud` (Primary), `llama3.2`, `qwen2.5`.
+
+**Hardening Implementation:**
+- **Retry Logic:** Exponential backoff for transient API failures.
+- **Concurrency:** Thread-safe background execution with non-blocking UI updates.
+- **Persistence:** SQL migration layer for additive schema updates.
 
 ### 3.2 User Interactions
 

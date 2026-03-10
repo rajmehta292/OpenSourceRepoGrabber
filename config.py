@@ -39,25 +39,35 @@ DEFAULT_SCAN_INTERVAL = 30
 
 # Ollama settings
 OLLAMA_BASE_URL = "http://localhost:11434"
-OLLAMA_DEFAULT_MODEL = "llama3.2"
-OLLAMA_MODELS = ["llama3.2", "qwen2.5", "mistral", "phi3"]
+OLLAMA_DEFAULT_MODEL = "kimi-k2.5:cloud"
+OLLAMA_MODELS = ["kimi-k2.5:cloud", "llama3.2", "qwen2.5", "mistral", "phi3"]
 
 # UI Settings
 WINDOW_MIN_WIDTH = 1200
 WINDOW_MIN_HEIGHT = 800
 WINDOW_DEFAULT_WIDTH = 1400
 WINDOW_DEFAULT_HEIGHT = 900
+THEME_PATH = BASE_DIR / "apple_theme.json"
+DEFAULT_APPEARANCE_MODE = "system" # "light", "dark", or "system"
 
-# Colors (matching SPEC.md)
+# Earthy Glassmorphism palette
 COLORS = {
-    "primary_bg": "#1a1a2e",
-    "secondary_bg": "#16213e",
-    "card_bg": "#0f3460",
-    "accent": "#e94560",
-    "success": "#00d9a0",
-    "warning": "#ffc107",
-    "error": "#ff4757",
-    "text_primary": "#ffffff",
-    "text_secondary": "#a0a0a0",
-    "border": "#2a2a4a"
+    "light": {
+        "bg": "#E8EBE4",      # Sage Green tint
+        "card": "#F2F0E6",    # Sand
+        "text": "#1D1D1F",
+        "accent": "#5E6C54",  # Muted Forest
+        "success": "#768969",
+        "error": "#B85C5C",
+        "border": "#D1D5CB"
+    },
+    "dark": {
+        "bg": "#0B120E",      # Deeper Midnight Emerald
+        "card": "#151D18",    # Dark Emerald Glass
+        "text": "#ECF0ED",    # High-contrast Mint White
+        "accent": "#10B981",  # Vibrant Emerald
+        "success": "#34D399",
+        "error": "#EF4444",
+        "border": "#202924"
+    }
 }

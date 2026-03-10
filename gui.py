@@ -506,6 +506,20 @@ class RepoGrabberApp(ctk.CTk):
         )
         self.model_selector.set(config.OLLAMA_DEFAULT_MODEL)
         self.model_selector.pack(side="left", fill="x", expand=True)
+
+        self.refresh_models_btn = ctk.CTkButton(
+            model_frame,
+            text="🔄",
+            width=36,
+            height=36,
+            corner_radius=8,
+            fg_color="transparent",
+            border_width=1,
+            border_color=("#D1D5CB", "#202924"),
+            text_color=("#5E6C54", "#10B981"),
+            command=self._refresh_models
+        )
+        self.refresh_models_btn.pack(side="left", padx=5)
         
         self.ollama_status = ctk.CTkLabel(model_frame, text="Checking status...", font=ctk.CTkFont(size=12))
         self.ollama_status.pack(side="right", padx=10)
@@ -1211,12 +1225,35 @@ class RepoGrabberApp(ctk.CTk):
         except Exception as e:
             logger.error(f"Error: {e}")
 
+    def _refresh_models(self):
+        """Manually refresh the available models list"""
+        self.ollama_status.configure(text="Refreshing...", text_color=("gray20", "gray80"))
+        threading.Thread(target=self._check_ollama, daemon=True).start()
+
     def _check_ollama(self):
         available = self.ollama.is_available()
-        self.after(0, lambda: self.ollama_status.configure(
-            text="Connected" if available else "Not Available",
-            text_color="#00d9a0" if available else "#ff4757"
-        ))
+        models = []
+        if available:
+            models = self.ollama.get_available_models()
+        
+        def update_ui():
+            self.ollama_status.configure(
+                text="Connected" if available else "Not Available",
+                text_color="#10B981" if available else "#EF4444"
+            )
+            if available and models:
+                current = self.model_selector.get()
+                self.model_selector.configure(values=models)
+                # Keep current if still available, else default to config
+                if current in models:
+                    self.model_selector.set(current)
+                elif config.OLLAMA_DEFAULT_MODEL in models:
+                    self.model_selector.set(config.OLLAMA_DEFAULT_MODEL)
+                else:
+                    self.model_selector.set(models[0])
+                    self.ollama.set_model(models[0])
+        
+        self.after(0, update_ui)
 
     def _change_model(self, model):
         self.ollama.set_model(model)

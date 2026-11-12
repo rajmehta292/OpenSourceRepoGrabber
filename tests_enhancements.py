@@ -93,6 +93,43 @@ class TestEnhancements(unittest.TestCase):
         self.assertEqual(len(FIRST_PR_WORKFLOW), 5)
         self.assertGreaterEqual(len(GIT_ESSENTIALS), 5)
 
+    def test_parse_repository_null_license_resilience(self):
+        """Verify repository parsing never crashes on null license or missing dates"""
+        from github_api import RepoCategory
+        raw_mock = {
+            "id": 999999,
+            "name": "test-repo",
+            "full_name": "owner/test-repo",
+            "description": "Mock repo with null license",
+            "html_url": "https://github.com/owner/test-repo",
+            "clone_url": "https://github.com/owner/test-repo.git",
+            "stargazers_count": 1234,
+            "forks_count": 56,
+            "watchers_count": 1234,
+            "open_issues_count": 10,
+            "license": None,  # GitHub returns null
+            "language": "Python",
+            "topics": ["test"],
+            "created_at": "2026-01-01T00:00:00Z",
+            "updated_at": "2026-01-02T00:00:00Z",
+            "pushed_at": None  # No pushes yet
+        }
+        parsed = self.github._parse_repository(raw_mock, RepoCategory.TRENDING)
+        self.assertEqual(parsed.full_name, "owner/test-repo")
+        self.assertIsNone(parsed.license)
+        self.assertIsNone(parsed.license_spdx_id)
+        self.assertIsNotNone(parsed.created_at)
+
+    def test_trending_repos_multi_language(self):
+        """Verify search_trending_repos returns healthy lists of repositories"""
+        repos_all = self.github.search_trending_repos(language="All")
+        self.assertIsInstance(repos_all, list)
+        self.assertGreaterEqual(len(repos_all), 5)
+
+        repos_py = self.github.search_trending_repos(language="Python")
+        self.assertIsInstance(repos_py, list)
+        self.assertGreaterEqual(len(repos_py), 3)
+
 
 if __name__ == "__main__":
     unittest.main()

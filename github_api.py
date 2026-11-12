@@ -137,22 +137,28 @@ class GitHubClient:
 
         return repos
 
-    def get_trending_repos(self, licenses: List[str], min_stars: int = 100) -> List[Repository]:
-        """Get trending repositories (created in last 30 days or recently pushed)"""
+    def get_trending_repos(self, licenses: List[str] = None, min_stars: int = 50, language: str = None) -> List[Repository]:
+        """Get trending repositories (recently pushed with star momentum, filtered by language if given)"""
         repos = []
         page = 1
-        per_page = 100
+        per_page = 50
 
         from datetime import timedelta
-        # Use 7 days ago for more relevant trending
-        days_ago = datetime.now() - timedelta(days=7)
+        days_ago = datetime.now() - timedelta(days=14)
         date_str = days_ago.strftime("%Y-%m-%d")
 
-        # Simplified query without license filter first
-        queries = [
-            f"pushed:>{date_str} stars:>500",
-            f"created:>{date_str} stars:>100",
-        ]
+        # Build search query targeting recent active projects
+        q_recent = f"pushed:>{date_str} stars:>{min_stars}"
+        if language and language.strip() and language.lower() != "all":
+            q_recent += f" language:{language.strip().lower()}"
+
+        days_ago_30 = datetime.now() - timedelta(days=30)
+        date_str_30 = days_ago_30.strftime("%Y-%m-%d")
+        q_fallback = f"created:>{date_str_30} stars:>20"
+        if language and language.strip() and language.lower() != "all":
+            q_fallback += f" language:{language.strip().lower()}"
+
+        queries = [q_recent, q_fallback]
 
         for query in queries:
             if len(repos) >= config.TRENDING_REPOS_COUNT:
@@ -175,11 +181,16 @@ class GitHubClient:
                     if len(repos) >= config.TRENDING_REPOS_COUNT:
                         break
 
-                    repo = self._parse_repository(item, RepoCategory.TRENDING)
-                    repo.trending_stars = max(0, repo.stars // 100)
-                    repos.append(repo)
+                    try:
+                        repo = self._parse_repository(item, RepoCategory.TRENDING)
+                        repo.trending_stars = max(0, repo.stars // 100)
+                        # Check duplicate
+                        if not any(r.full_name.lower() == repo.full_name.lower() for r in repos):
+                            repos.append(repo)
+                    except Exception as item_err:
+                        logger.debug(f"Skipping malformed repository item: {item_err}")
 
-                time.sleep(0.5)
+                time.sleep(0.3)
 
             except RateLimitError:
                 logger.warning("Rate limited during trending repos fetch")
@@ -191,7 +202,36 @@ class GitHubClient:
         return repos
 
     def _parse_repository(self, data: dict, category: RepoCategory) -> Repository:
-        """Parse repository data from API response"""
+        """Parse repository data from API response safely"""
+        lic_dict = data.get("license") or {}
+        
+        created_at = None
+        if data.get("created_at"):
+            try:
+                created_at = datetime.fromisoformat(data["created_at"].replace("Z", "+00:00"))
+            except Exception:
+                created_at = datetime.now()
+        else:
+            created_at = datetime.now()
+
+        updated_at = None
+        if data.get("updated_at"):
+            try:
+                updated_at = datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00"))
+            except Exception:
+                updated_at = datetime.now()
+        else:
+            updated_at = datetime.now()
+
+        pushed_at = None
+        if data.get("pushed_at"):
+            try:
+                pushed_at = datetime.fromisoformat(data["pushed_at"].replace("Z", "+00:00"))
+            except Exception:
+                pushed_at = datetime.now()
+        else:
+            pushed_at = datetime.now()
+
         return Repository(
             id=data["id"],
             name=data["name"],
@@ -203,14 +243,14 @@ class GitHubClient:
             forks=data.get("forks_count", 0),
             watchers=data.get("watchers_count", 0),
             open_issues=data.get("open_issues_count", 0),
-            license=data.get("license", {}).get("name"),
-            license_spdx_id=data.get("license", {}).get("spdx_id"),
+            license=lic_dict.get("name"),
+            license_spdx_id=lic_dict.get("spdx_id"),
             language=data.get("language"),
-            topics=data.get("topics", []),
-            created_at=datetime.fromisoformat(data["created_at"].replace("Z", "+00:00")),
-            updated_at=datetime.fromisoformat(data["updated_at"].replace("Z", "+00:00")),
-            pushed_at=datetime.fromisoformat(data["pushed_at"].replace("Z", "+00:00")),
-            category=category,
+            topics=data.get("topics") or [],
+            created_at=created_at,
+            updated_at=updated_at,
+            pushed_at=pushed_at,
+            category=category or RepoCategory.ALL_TIME_TOP,
             last_scanned=datetime.now()
         )
 
@@ -223,7 +263,7 @@ class GitHubClient:
                 import base64
                 content = data.get("content", "")
                 if content:
-                    return base64.b64decode(content).decode("utf-8")
+                    return base64.b64decode(content).decode("utf-8", errors="replace")
         except Exception as e:
             logger.debug(f"Could not fetch README for {owner}/{repo}: {e}")
         return None
@@ -344,11 +384,17 @@ class GitHubClient:
             licenses = ["mit", "apache-2.0", "bsd-3-clause", "bsd-2-clause", "gpl-3.0", "gpl-2.0", "lgpl-2.1", "agpl-3.0", "unlicense"]
         
         try:
-            repos = self.get_trending_repos(licenses=licenses, min_stars=100)
+            lang_param = language if language and language.lower() != "all" else None
+            repos = self.get_trending_repos(licenses=licenses, min_stars=50, language=lang_param)
             
-            # Filter by language if specified
-            if language:
-                repos = [r for r in repos if r.language and r.language.lower() == language.lower()]
+            # If strict recent trending returned fewer than 5, expand search with general top active
+            if len(repos) < 5:
+                extra_repos = self.get_all_time_top_repos(licenses=licenses, min_stars=500)
+                if lang_param:
+                    extra_repos = [r for r in extra_repos if r.language and r.language.lower() == lang_param.lower()]
+                for er in extra_repos:
+                    if not any(r.full_name.lower() == er.full_name.lower() for r in repos):
+                        repos.append(er)
             
             # Convert to dict format for GUI
             result = []
@@ -376,14 +422,14 @@ class GitHubClient:
         # Fallback to curated repositories
         filtered = CURATED_STARTER_REPOS
         if language and language.lower() != "all":
-            filtered = [r for r in CURATED_STARTER_REPOS if r.get("language", "").lower() == language.lower()]
-        return filtered or CURATED_STARTER_REPOS
+            matched = [r for r in CURATED_STARTER_REPOS if r.get("language", "").lower() == language.lower()]
+            filtered = matched if matched else CURATED_STARTER_REPOS
+        return filtered
     
     def search_repos(self, query: str, language: str = None, licenses: List[str] = None) -> List[dict]:
         """Search repositories by keyword"""
-        # Build simple search query
-        search_query = query
-        if language:
+        search_query = query.strip()
+        if language and language.lower() != "all":
             search_query += f" language:{language}"
         
         repos = []
@@ -402,10 +448,12 @@ class GitHubClient:
             data = self.get("/search/repositories", params=params)
             if data and data.get("items"):
                 allowed_licenses = licenses or ["mit", "apache-2.0", "bsd-3-clause", "bsd-2-clause", "gpl-3.0", "gpl-2.0", "lgpl-2.1", "agpl-3.0", "unlicense"]
+                allowed_lic_lower = [l.lower() for l in allowed_licenses]
                 
                 for item in data["items"]:
-                    repo_license = item.get("license", {}).get("spdx_id", "")
-                    if repo_license and repo_license.lower() not in [l.lower() for l in allowed_licenses]:
+                    lic_info = item.get("license") or {}
+                    repo_license = lic_info.get("spdx_id", "")
+                    if repo_license and repo_license.lower() not in allowed_lic_lower:
                         continue
                         
                     repos.append({
@@ -417,8 +465,8 @@ class GitHubClient:
                         "stargazers_count": item.get("stargazers_count", 0),
                         "forks_count": item.get("forks_count", 0),
                         "language": item.get("language"),
-                        "license": item.get("license", {}).get("name"),
-                        "license_spdx_id": item.get("license", {}).get("spdx_id"),
+                        "license": lic_info.get("name"),
+                        "license_spdx_id": lic_info.get("spdx_id"),
                         "pushed_at": item.get("pushed_at"),
                         "created_at": item.get("created_at")
                     })
@@ -434,7 +482,7 @@ class GitHubClient:
         matched = []
         for r in CURATED_STARTER_REPOS:
             if query_lower in r["full_name"].lower() or query_lower in (r.get("description") or "").lower():
-                if not language or r.get("language", "").lower() == language.lower():
+                if not language or language.lower() == "all" or r.get("language", "").lower() == language.lower():
                     matched.append(r)
         return matched if matched else CURATED_STARTER_REPOS[:4]
 
@@ -461,6 +509,7 @@ class GitHubClient:
             if data and data.get("items"):
                 results = []
                 for item in data["items"]:
+                    lic_info = item.get("license") or {}
                     results.append({
                         "full_name": item.get("full_name"),
                         "name": item.get("name"),
@@ -471,8 +520,8 @@ class GitHubClient:
                         "forks_count": item.get("forks_count", 0),
                         "open_issues_count": item.get("open_issues_count", 0),
                         "language": item.get("language"),
-                        "license": item.get("license", {}).get("name") or "Permissive",
-                        "license_spdx_id": item.get("license", {}).get("spdx_id"),
+                        "license": lic_info.get("name") or "Permissive",
+                        "license_spdx_id": lic_info.get("spdx_id"),
                         "good_first_issues_count": item.get("open_issues_count", 0) // 10 + 2
                     })
                 return results

@@ -466,24 +466,12 @@ class RepoGrabberApp(ctk.CTk):
     def _create_starter_card(self, parent, starter):
         card = ctk.CTkFrame(parent, height=80, corner_radius=10, fg_color=("#FFFFFF", "#151D18"), border_width=1, border_color=("#D1D9CD", "#202924"))
         card.pack(fill="x", pady=5)
-        card.grid_propagate(False)
-        
-        info = ctk.CTkFrame(card, fg_color="transparent")
-        info.pack(side="left", fill="both", expand=True, padx=18, pady=10)
-        
-        top_line = ctk.CTkFrame(info, fg_color="transparent")
-        top_line.pack(fill="x")
-        
-        ctk.CTkLabel(top_line, text=starter["full_name"], font=ctk.CTkFont(family="Inter", size=15, weight="bold")).pack(side="left")
-        ctk.CTkLabel(top_line, text=f"  ● {starter.get('language', 'Polyglot')}  |  ★ {starter.get('stargazers_count', 0):,}  |  {starter.get('license', 'MIT')}", font=ctk.CTkFont(size=11), text_color=config.COLORS["dark"]["accent"]).pack(side="left", padx=8)
-        
-        desc = starter.get("description", "")
-        ctk.CTkLabel(info, text=desc[:110] + ("..." if len(desc) > 110 else ""), font=ctk.CTkFont(size=11), text_color=("gray40", "gray70"), anchor="w").pack(fill="x", pady=(2, 0))
+        card.pack_propagate(False)
         
         btn_box = ctk.CTkFrame(card, fg_color="transparent")
         btn_box.pack(side="right", padx=15, pady=10)
         
-        ctk.CTkButton(
+        clone_btn = ctk.CTkButton(
             btn_box,
             text="⚡ 1-Click Clone",
             width=110,
@@ -492,9 +480,10 @@ class RepoGrabberApp(ctk.CTk):
             fg_color=("#5E6C54", "#10B981"),
             hover_color=("#4F5B46", "#059669"),
             text_color="white",
-            font=ctk.CTkFont(family="Inter", size=11, weight="bold"),
-            command=lambda s=starter: self._clone_starter_repo(s)
-        ).pack(side="right", padx=4)
+            font=ctk.CTkFont(family="Inter", size=11, weight="bold")
+        )
+        clone_btn.configure(command=lambda s=starter, b=clone_btn: self._clone_starter_repo(s, b))
+        clone_btn.pack(side="right", padx=4)
 
         ctk.CTkButton(
             btn_box,
@@ -521,25 +510,45 @@ class RepoGrabberApp(ctk.CTk):
             border_color=("#D1D5CB", "#202924"),
             text_color=("gray20", "gray85"),
             font=ctk.CTkFont(family="Inter", size=11),
-            command=lambda u=starter.get("html_url"): webbrowser.open(u)
+            command=lambda u=starter.get("html_url"): webbrowser.open(u) if u else None
         ).pack(side="right", padx=4)
 
-    def _clone_starter_repo(self, starter):
+        info = ctk.CTkFrame(card, fg_color="transparent")
+        info.pack(side="left", fill="both", expand=True, padx=18, pady=10)
+        
+        top_line = ctk.CTkFrame(info, fg_color="transparent")
+        top_line.pack(fill="x")
+        
+        ctk.CTkLabel(top_line, text=starter["full_name"], font=ctk.CTkFont(family="Inter", size=15, weight="bold")).pack(side="left")
+        ctk.CTkLabel(top_line, text=f"  ● {starter.get('language', 'Polyglot')}  |  ★ {starter.get('stargazers_count', 0):,}  |  {starter.get('license', 'MIT')}", font=ctk.CTkFont(size=11), text_color=config.COLORS["dark"]["accent"]).pack(side="left", padx=8)
+        
+        desc = starter.get("description", "")
+        ctk.CTkLabel(info, text=desc[:110] + ("..." if len(desc) > 110 else ""), font=ctk.CTkFont(size=11), text_color=("gray40", "gray70"), anchor="w").pack(fill="x", pady=(2, 0))
+
+    def _clone_starter_repo(self, starter, button=None):
+        if button:
+            button.configure(state="disabled", text="⏳ Cloning...")
         url = starter.get("clone_url") or f"https://github.com/{starter['full_name']}.git"
         lic = starter.get("license_spdx_id")
         
-        messagebox.showinfo("Cloning", f"Starting clone for {starter['full_name']} into license folder...")
-        
         def clone():
             result = self.repo_manager.add_repo(url, license_spdx=lic)
-            if result.get("status") == "cloned":
-                self.after(0, lambda: messagebox.showinfo("Success", f"Successfully cloned {result['name']}!"))
-                self._load_repos()
-                self.after(0, self._render_overview_kpis)
-            elif result.get("status") == "already_exists":
-                self.after(0, lambda: messagebox.showinfo("Info", "Repository already exists in your local collection!"))
-            else:
-                self.after(0, lambda: messagebox.showerror("Clone Failed", result.get("error", "Unknown error")))
+            def on_done():
+                if result.get("status") == "cloned":
+                    if button:
+                        button.configure(state="disabled", text="✅ Cloned", fg_color="#10B981")
+                    messagebox.showinfo("Success", f"Successfully cloned {result['name']}!")
+                    self._load_repos()
+                    self._render_overview_kpis()
+                elif result.get("status") == "already_exists":
+                    if button:
+                        button.configure(state="disabled", text="✅ Cloned")
+                    messagebox.showinfo("Info", "Repository already exists in your local collection!")
+                else:
+                    if button:
+                        button.configure(state="normal", text="⚡ 1-Click Clone")
+                    messagebox.showerror("Clone Failed", result.get("error", "Unknown error"))
+            self.after(0, on_done)
 
         threading.Thread(target=clone, daemon=True).start()
 
@@ -707,12 +716,113 @@ class RepoGrabberApp(ctk.CTk):
             self._create_repo_card(repo)
 
     def _create_repo_card(self, repo):
-        card = ctk.CTkFrame(self.repo_list, height=140, corner_radius=12, border_width=0)
-        card.pack(fill="x", pady=10, padx=10)
-        card.grid_propagate(False)
+        card = ctk.CTkFrame(self.repo_list, height=135, corner_radius=12, border_width=0)
+        card.pack(fill="x", pady=8, padx=10)
+        card.pack_propagate(False)
         
+        # Action buttons packed on RIGHT first to guarantee visibility
+        btn_frame = ctk.CTkFrame(card, fg_color="transparent")
+        btn_frame.pack(side="right", fill="y", padx=15)
+        
+        inner_btns = ctk.CTkFrame(btn_frame, fg_color="transparent")
+        inner_btns.pack(expand=True)
+
+        readme_btn = ctk.CTkButton(
+            inner_btns,
+            text="📖 Readme",
+            width=70,
+            height=30,
+            corner_radius=6,
+            fg_color="transparent",
+            border_width=1,
+            border_color=("#D1D5CB", "#202924"),
+            text_color=("gray20", "gray85"),
+            font=ctk.CTkFont(family="Inter", size=11),
+            command=lambda r=repo: self._show_readme_modal(r)
+        )
+        readme_btn.pack(side="left", padx=2)
+        ToolTip(readme_btn, "Inspect README.md in app")
+
+        files_btn = ctk.CTkButton(
+            inner_btns,
+            text="🌳 Files",
+            width=65,
+            height=30,
+            corner_radius=6,
+            fg_color="transparent",
+            border_width=1,
+            border_color=("#D1D5CB", "#202924"),
+            text_color=("gray20", "gray85"),
+            font=ctk.CTkFont(family="Inter", size=11),
+            command=lambda r=repo: self._show_file_tree_modal(r)
+        )
+        files_btn.pack(side="left", padx=2)
+        ToolTip(files_btn, "View project directory tree and statistics")
+
+        audit_btn = ctk.CTkButton(
+            inner_btns,
+            text="🏛️ Audit",
+            width=70,
+            height=30,
+            corner_radius=6,
+            fg_color=("#5E6C54", "#10B981"),
+            hover_color=("#4F5B46", "#059669"),
+            text_color="white",
+            font=ctk.CTkFont(family="Inter", size=11, weight="bold"),
+            command=lambda r=repo: self._run_architecture_audit(r)
+        )
+        audit_btn.pack(side="left", padx=2)
+        ToolTip(audit_btn, "Run Project Oracle Architectural Audit")
+
+        open_btn = ctk.CTkButton(
+            inner_btns,
+            text="💻 Editor",
+            width=65,
+            height=30,
+            corner_radius=6,
+            fg_color="transparent",
+            border_width=1,
+            border_color=("#5E6C54", "#10B981"),
+            text_color=("#5E6C54", "#10B981"),
+            font=ctk.CTkFont(family="Inter", size=11),
+            command=lambda p=repo["path"]: self._open_repo(p)
+        )
+        open_btn.pack(side="left", padx=2)
+        ToolTip(open_btn, "Open source code in Cursor, VS Code, or Explorer")
+        
+        sync_btn = ctk.CTkButton(
+            inner_btns,
+            text="🔄 Sync",
+            width=60,
+            height=30,
+            corner_radius=6,
+            fg_color=("gray90", "#202924"),
+            text_color=("#1D1D1F", "#ECF0ED"),
+            hover_color=("gray80", "#2D362F"),
+            font=ctk.CTkFont(family="Inter", size=11),
+            command=lambda p=repo["path"]: self._update_repo(p)
+        )
+        sync_btn.pack(side="left", padx=2)
+        ToolTip(sync_btn, "Update from GitHub and scan for changes")
+        
+        del_btn = ctk.CTkButton(
+            inner_btns,
+            text="✕",
+            width=28,
+            height=30,
+            corner_radius=6,
+            fg_color="transparent",
+            text_color="#FF3B30",
+            hover_color=("#FFE5E5", "#3D2525"),
+            font=ctk.CTkFont(family="Inter", size=13, weight="bold"),
+            command=lambda p=repo["path"]: self._delete_repo(p)
+        )
+        del_btn.pack(side="left", padx=2)
+        ToolTip(del_btn, "Remove project from local storage")
+
+        # Info frame packed on LEFT second
         info_frame = ctk.CTkFrame(card, fg_color="transparent")
-        info_frame.pack(side="left", fill="both", expand=True, padx=20, pady=15)
+        info_frame.pack(side="left", fill="both", expand=True, padx=20, pady=12)
         
         top_row = ctk.CTkFrame(info_frame, fg_color="transparent")
         top_row.pack(fill="x")
@@ -720,7 +830,7 @@ class RepoGrabberApp(ctk.CTk):
         repo_name_lbl = ctk.CTkLabel(
             top_row,
             text=repo["name"],
-            font=ctk.CTkFont(family="Inter", size=18, weight="bold"),
+            font=ctk.CTkFont(family="Inter", size=17, weight="bold"),
             anchor="w"
         )
         repo_name_lbl.pack(side="left")
@@ -756,7 +866,7 @@ class RepoGrabberApp(ctk.CTk):
 
         if repo.get("smart_tags"):
             tags_frame = ctk.CTkFrame(info_frame, fg_color="transparent")
-            tags_frame.pack(fill="x", pady=(6, 0))
+            tags_frame.pack(fill="x", pady=(4, 0))
             for tag in repo["smart_tags"][:5]:
                 t = ctk.CTkLabel(
                     tags_frame,
@@ -768,111 +878,31 @@ class RepoGrabberApp(ctk.CTk):
                 )
                 t.pack(side="left", padx=(0, 6))
 
-        btn_frame = ctk.CTkFrame(card, fg_color="transparent")
-        btn_frame.pack(side="right", fill="y", padx=15)
+    def _center_and_lift_modal(self, modal, width=900, height=700):
+        """Center modal over parent and ensure it renders on top in Windows"""
+        try:
+            self.update_idletasks()
+            pw = self.winfo_width() or 1200
+            ph = self.winfo_height() or 800
+            px = self.winfo_rootx()
+            py = self.winfo_rooty()
+            x = px + max(0, (pw - width) // 2)
+            y = py + max(0, (ph - height) // 2)
+            modal.geometry(f"{width}x{height}+{x}+{y}")
+        except Exception:
+            modal.geometry(f"{width}x{height}")
         
-        inner_btns = ctk.CTkFrame(btn_frame, fg_color="transparent")
-        inner_btns.pack(expand=True)
-
-        readme_btn = ctk.CTkButton(
-            inner_btns,
-            text="📖 Readme",
-            width=75,
-            height=30,
-            corner_radius=6,
-            fg_color="transparent",
-            border_width=1,
-            border_color=("#D1D5CB", "#202924"),
-            text_color=("gray20", "gray85"),
-            font=ctk.CTkFont(family="Inter", size=11),
-            command=lambda r=repo: self._show_readme_modal(r)
-        )
-        readme_btn.pack(side="left", padx=3)
-        ToolTip(readme_btn, "Inspect README.md in app")
-
-        files_btn = ctk.CTkButton(
-            inner_btns,
-            text="🌳 Files",
-            width=70,
-            height=30,
-            corner_radius=6,
-            fg_color="transparent",
-            border_width=1,
-            border_color=("#D1D5CB", "#202924"),
-            text_color=("gray20", "gray85"),
-            font=ctk.CTkFont(family="Inter", size=11),
-            command=lambda r=repo: self._show_file_tree_modal(r)
-        )
-        files_btn.pack(side="left", padx=3)
-        ToolTip(files_btn, "View project directory tree and statistics")
-
-        audit_btn = ctk.CTkButton(
-            inner_btns,
-            text="🏛️ Audit",
-            width=75,
-            height=30,
-            corner_radius=6,
-            fg_color=("#5E6C54", "#10B981"),
-            hover_color=("#4F5B46", "#059669"),
-            text_color="white",
-            font=ctk.CTkFont(family="Inter", size=11, weight="bold"),
-            command=lambda r=repo: self._run_architecture_audit(r)
-        )
-        audit_btn.pack(side="left", padx=3)
-        ToolTip(audit_btn, "Run Project Oracle Architectural Audit")
-
-        open_btn = ctk.CTkButton(
-            inner_btns,
-            text="💻 Editor",
-            width=70,
-            height=30,
-            corner_radius=6,
-            fg_color="transparent",
-            border_width=1,
-            border_color=("#5E6C54", "#10B981"),
-            text_color=("#5E6C54", "#10B981"),
-            font=ctk.CTkFont(family="Inter", size=11),
-            command=lambda p=repo["path"]: self._open_repo(p)
-        )
-        open_btn.pack(side="left", padx=3)
-        ToolTip(open_btn, "Open source code in Cursor, VS Code, or Explorer")
-        
-        sync_btn = ctk.CTkButton(
-            inner_btns,
-            text="🔄 Sync",
-            width=65,
-            height=30,
-            corner_radius=6,
-            fg_color=("gray90", "#202924"),
-            text_color=("#1D1D1F", "#ECF0ED"),
-            hover_color=("gray80", "#2D362F"),
-            font=ctk.CTkFont(family="Inter", size=11),
-            command=lambda p=repo["path"]: self._update_repo(p)
-        )
-        sync_btn.pack(side="left", padx=3)
-        ToolTip(sync_btn, "Update from GitHub and scan for changes")
-        
-        del_btn = ctk.CTkButton(
-            inner_btns,
-            text="✕",
-            width=28,
-            height=30,
-            corner_radius=6,
-            fg_color="transparent",
-            text_color="#FF3B30",
-            hover_color=("#FFE5E5", "#3D2525"),
-            font=ctk.CTkFont(family="Inter", size=13, weight="bold"),
-            command=lambda p=repo["path"]: self._delete_repo(p)
-        )
-        del_btn.pack(side="left", padx=3)
-        ToolTip(del_btn, "Remove project from local storage")
+        modal.lift()
+        modal.attributes("-topmost", True)
+        modal.after(150, lambda: modal.attributes("-topmost", False))
+        modal.focus_force()
 
     def _show_readme_modal(self, repo):
         modal = ctk.CTkToplevel(self)
         modal.title(f"README: {repo['name']}")
-        modal.geometry("900x700")
         modal.grid_columnconfigure(0, weight=1)
         modal.grid_rowconfigure(1, weight=1)
+        self._center_and_lift_modal(modal, 900, 700)
         
         h = ctk.CTkFrame(modal, fg_color="transparent")
         h.grid(row=0, column=0, sticky="ew", padx=25, pady=(20, 10))
@@ -906,9 +936,9 @@ class RepoGrabberApp(ctk.CTk):
         full_name = repo.get("full_name") or repo.get("name")
         modal = ctk.CTkToplevel(self)
         modal.title(f"Preview README: {full_name}")
-        modal.geometry("900x700")
         modal.grid_columnconfigure(0, weight=1)
         modal.grid_rowconfigure(1, weight=1)
+        self._center_and_lift_modal(modal, 900, 700)
         
         h = ctk.CTkFrame(modal, fg_color="transparent")
         h.grid(row=0, column=0, sticky="ew", padx=25, pady=(20, 10))
@@ -926,7 +956,7 @@ class RepoGrabberApp(ctk.CTk):
             fg_color=("#5E6C54", "#10B981"),
             hover_color=("#4F5B46", "#059669"),
             text_color="white",
-            command=lambda: [modal.destroy(), self._clone_from_search(repo)]
+            command=lambda: [modal.destroy(), self._async_clone_from_search(repo)]
         )
         clone_btn.pack(side="right")
         
@@ -955,9 +985,9 @@ class RepoGrabberApp(ctk.CTk):
     def _show_file_tree_modal(self, repo):
         modal = ctk.CTkToplevel(self)
         modal.title(f"File Tree & Inspector: {repo['name']}")
-        modal.geometry("950x750")
         modal.grid_columnconfigure(0, weight=1)
         modal.grid_rowconfigure(1, weight=1)
+        self._center_and_lift_modal(modal, 950, 750)
         
         stats = self.repo_manager.get_repo_stats(repo["path"])
         h = ctk.CTkFrame(modal, fg_color="transparent")
@@ -1497,12 +1527,62 @@ class RepoGrabberApp(ctk.CTk):
             return
         
         for repo in repos:
-            card = ctk.CTkFrame(self.trending_list, height=140, corner_radius=12)
-            card.pack(fill="x", pady=8, padx=5)
-            card.grid_propagate(False)
+            card = ctk.CTkFrame(self.trending_list, height=135, corner_radius=12)
+            card.pack(fill="x", pady=6, padx=5)
+            card.pack_propagate(False)
             
+            # Action buttons packed on RIGHT first to prevent any clipping
+            btn_frame = ctk.CTkFrame(card, fg_color="transparent", border_width=0)
+            btn_frame.pack(side="right", fill="y", padx=15)
+            
+            inner_action = ctk.CTkFrame(btn_frame, fg_color="transparent")
+            inner_action.pack(expand=True)
+
+            ctk.CTkButton(
+                inner_action,
+                text="🌐 GitHub",
+                width=75,
+                height=32,
+                corner_radius=8,
+                fg_color="transparent",
+                border_width=1,
+                border_color=("#D1D5CB", "#2D3730"),
+                text_color=("gray20", "gray85"),
+                font=ctk.CTkFont(family="Inter", size=11),
+                command=lambda u=repo.get("html_url"): webbrowser.open(u) if u else None
+            ).pack(side="left", padx=3)
+
+            ctk.CTkButton(
+                inner_action,
+                text="👁️ Readme",
+                width=75,
+                height=32,
+                corner_radius=8,
+                fg_color="transparent",
+                border_width=1,
+                border_color=("#5E6C54", "#10B981"),
+                text_color=("#5E6C54", "#10B981"),
+                font=ctk.CTkFont(family="Inter", size=11, weight="bold"),
+                command=lambda r=repo: self._preview_remote_readme(r)
+            ).pack(side="left", padx=3)
+
+            clone_btn = ctk.CTkButton(
+                inner_action,
+                text="⚡ Clone",
+                width=75,
+                height=32,
+                corner_radius=8,
+                fg_color=("#5E6C54", "#10B981"),
+                hover_color=("#4F5B46", "#059669"),
+                text_color="white",
+                font=ctk.CTkFont(family="Inter", size=11, weight="bold")
+            )
+            clone_btn.configure(command=lambda r=repo, b=clone_btn: self._async_clone_from_search(r, b))
+            clone_btn.pack(side="left", padx=3)
+
+            # Info frame packed on LEFT second
             info_frame = ctk.CTkFrame(card, fg_color="transparent", border_width=0)
-            info_frame.pack(side="left", fill="both", expand=True, padx=20, pady=15)
+            info_frame.pack(side="left", fill="both", expand=True, padx=20, pady=12)
             
             ctk.CTkLabel(
                 info_frame,
@@ -1511,18 +1591,18 @@ class RepoGrabberApp(ctk.CTk):
                 anchor="w"
             ).pack(fill="x")
             
-            desc = repo.get("description", "No description provided.")
+            desc = repo.get("description") or "No description provided."
             ctk.CTkLabel(
                 info_frame,
-                text=desc[:120] + "..." if len(desc) > 120 else desc,
+                text=desc[:115] + "..." if len(desc) > 115 else desc,
                 font=ctk.CTkFont(family="Inter", size=11),
                 text_color=("gray40", "gray70"),
                 anchor="w",
                 justify="left",
-                wraplength=600
-            ).pack(fill="x", pady=5)
+                wraplength=550
+            ).pack(fill="x", pady=4)
             
-            stats_text = f"★ {repo.get('stargazers_count', 0)}   ⑂ {repo.get('forks_count', 0)}"
+            stats_text = f"★ {repo.get('stargazers_count', 0):,}   ⑂ {repo.get('forks_count', 0):,}"
             if repo.get("language"):
                 stats_text += f"   ● {repo['language']}"
             if repo.get("license"):
@@ -1535,38 +1615,6 @@ class RepoGrabberApp(ctk.CTk):
                 text_color=config.COLORS["dark"]["accent"],
                 anchor="w"
             ).pack(fill="x")
-            
-            btn_frame = ctk.CTkFrame(card, fg_color="transparent", border_width=0)
-            btn_frame.pack(side="right", fill="y", padx=20)
-            
-            inner_action = ctk.CTkFrame(btn_frame, fg_color="transparent")
-            inner_action.pack(expand=True)
-
-            ctk.CTkButton(
-                inner_action,
-                text="👁️ Readme",
-                width=80,
-                height=32,
-                corner_radius=8,
-                fg_color="transparent",
-                border_width=1,
-                border_color=("#5E6C54", "#10B981"),
-                text_color=("#5E6C54", "#10B981"),
-                font=ctk.CTkFont(family="Inter", size=11),
-                command=lambda r=repo: self._preview_remote_readme(r)
-            ).pack(side="left", padx=4)
-
-            ctk.CTkButton(
-                inner_action,
-                text="Clone",
-                width=80,
-                height=32,
-                corner_radius=8,
-                fg_color=("#5E6C54", "#10B981"),
-                hover_color=("#4F5B46", "#059669"),
-                text_color="white",
-                command=lambda r=repo: self._clone_from_search(r)
-            ).pack(side="left", padx=4)
 
     def _trending_error(self, error):
         for widget in self.trending_list.winfo_children():
@@ -1671,12 +1719,62 @@ class RepoGrabberApp(ctk.CTk):
             return
         
         for repo in repos:
-            card = ctk.CTkFrame(self.search_results_list, height=140, corner_radius=12)
-            card.pack(fill="x", pady=8, padx=5)
-            card.grid_propagate(False)
+            card = ctk.CTkFrame(self.search_results_list, height=135, corner_radius=12)
+            card.pack(fill="x", pady=6, padx=5)
+            card.pack_propagate(False)
             
+            # Action buttons packed on RIGHT first
+            btn_frame = ctk.CTkFrame(card, fg_color="transparent", border_width=0)
+            btn_frame.pack(side="right", fill="y", padx=15)
+            
+            inner_action = ctk.CTkFrame(btn_frame, fg_color="transparent")
+            inner_action.pack(expand=True)
+
+            ctk.CTkButton(
+                inner_action,
+                text="🌐 GitHub",
+                width=75,
+                height=32,
+                corner_radius=8,
+                fg_color="transparent",
+                border_width=1,
+                border_color=("#D1D5CB", "#2D3730"),
+                text_color=("gray20", "gray85"),
+                font=ctk.CTkFont(family="Inter", size=11),
+                command=lambda u=repo.get("html_url"): webbrowser.open(u) if u else None
+            ).pack(side="left", padx=3)
+
+            ctk.CTkButton(
+                inner_action,
+                text="👁️ Readme",
+                width=75,
+                height=32,
+                corner_radius=8,
+                fg_color="transparent",
+                border_width=1,
+                border_color=("#5E6C54", "#10B981"),
+                text_color=("#5E6C54", "#10B981"),
+                font=ctk.CTkFont(family="Inter", size=11, weight="bold"),
+                command=lambda r=repo: self._preview_remote_readme(r)
+            ).pack(side="left", padx=3)
+
+            clone_btn = ctk.CTkButton(
+                inner_action,
+                text="⚡ Clone",
+                width=75,
+                height=32,
+                corner_radius=8,
+                fg_color=("#5E6C54", "#10B981"),
+                hover_color=("#4F5B46", "#059669"),
+                text_color="white",
+                font=ctk.CTkFont(family="Inter", size=11, weight="bold")
+            )
+            clone_btn.configure(command=lambda r=repo, b=clone_btn: self._async_clone_from_search(r, b))
+            clone_btn.pack(side="left", padx=3)
+
+            # Info frame packed on LEFT second
             info_frame = ctk.CTkFrame(card, fg_color="transparent", border_width=0)
-            info_frame.pack(side="left", fill="both", expand=True, padx=20, pady=15)
+            info_frame.pack(side="left", fill="both", expand=True, padx=20, pady=12)
             
             ctk.CTkLabel(
                 info_frame,
@@ -1685,20 +1783,22 @@ class RepoGrabberApp(ctk.CTk):
                 anchor="w"
             ).pack(fill="x")
             
-            desc = repo.get("description", "No description provided.")
+            desc = repo.get("description") or "No description provided."
             ctk.CTkLabel(
                 info_frame,
-                text=desc[:120] + "..." if len(desc) > 120 else desc,
+                text=desc[:115] + "..." if len(desc) > 115 else desc,
                 font=ctk.CTkFont(family="Inter", size=11),
                 text_color=("gray40", "gray70"),
                 anchor="w",
                 justify="left",
-                wraplength=600
-            ).pack(fill="x", pady=5)
+                wraplength=550
+            ).pack(fill="x", pady=4)
             
-            stats_text = f"★ {repo.get('stargazers_count', 0)}   ⑂ {repo.get('forks_count', 0)}"
+            stats_text = f"★ {repo.get('stargazers_count', 0):,}   ⑂ {repo.get('forks_count', 0):,}"
             if repo.get("language"):
                 stats_text += f"   ● {repo['language']}"
+            if repo.get("license"):
+                stats_text += f"   ⚖️ {repo['license']}"
             
             ctk.CTkLabel(
                 info_frame,
@@ -1707,38 +1807,6 @@ class RepoGrabberApp(ctk.CTk):
                 text_color=config.COLORS["dark"]["accent"],
                 anchor="w"
             ).pack(fill="x")
-            
-            btn_frame = ctk.CTkFrame(card, fg_color="transparent", border_width=0)
-            btn_frame.pack(side="right", fill="y", padx=20)
-            
-            inner_action = ctk.CTkFrame(btn_frame, fg_color="transparent")
-            inner_action.pack(expand=True)
-
-            ctk.CTkButton(
-                inner_action,
-                text="👁️ Readme",
-                width=80,
-                height=32,
-                corner_radius=8,
-                fg_color="transparent",
-                border_width=1,
-                border_color=("#5E6C54", "#10B981"),
-                text_color=("#5E6C54", "#10B981"),
-                font=ctk.CTkFont(family="Inter", size=11),
-                command=lambda r=repo: self._preview_remote_readme(r)
-            ).pack(side="left", padx=4)
-
-            ctk.CTkButton(
-                inner_action,
-                text="Clone",
-                width=80,
-                height=32,
-                corner_radius=8,
-                fg_color=("#5E6C54", "#10B981"),
-                hover_color=("#4F5B46", "#059669"),
-                text_color="white",
-                command=lambda r=repo: self._clone_from_search(r)
-            ).pack(side="left", padx=4)
 
     def _search_error(self, error):
         for widget in self.search_results_list.winfo_children():
@@ -1750,18 +1818,41 @@ class RepoGrabberApp(ctk.CTk):
             text_color="#ff4757"
         ).pack(pady=20)
 
-    def _clone_from_search(self, repo):
-        url = repo.get("clone_url") or f"https://github.com/{repo['full_name']}.git"
+    def _async_clone_from_search(self, repo, button=None):
+        """Asynchronously clone repository without freezing the UI thread"""
+        if button:
+            button.configure(state="disabled", text="⏳ Cloning...")
+
+        full_name = repo.get("full_name") or repo.get("name")
+        url = repo.get("clone_url") or f"https://github.com/{full_name}.git"
         lic = repo.get("license_spdx_id")
-        result = self.repo_manager.add_repo(url, license_spdx=lic)
-        
-        if result.get("status") == "cloned":
-            messagebox.showinfo("Success", f"Cloned {result['name']} into {result.get('folder', 'License')} folder!")
-            self._load_repos()
-        elif result.get("status") == "already_exists":
-            messagebox.showinfo("Info", "Repository already exists in your local library!")
-        else:
-            messagebox.showerror("Error", result.get("error", "Failed to clone"))
+
+        def worker():
+            result = self.repo_manager.add_repo(url, license_spdx=lic)
+            
+            def on_done():
+                if result.get("status") == "cloned":
+                    if button:
+                        button.configure(state="disabled", text="✅ Cloned", fg_color="#10B981")
+                    messagebox.showinfo("Success", f"Cloned {result['name']} into {result.get('folder', 'License')} folder!")
+                    self._load_repos()
+                    if hasattr(self, "_render_overview_kpis"):
+                        self._render_overview_kpis()
+                elif result.get("status") == "already_exists":
+                    if button:
+                        button.configure(state="disabled", text="✅ Cloned")
+                    messagebox.showinfo("Info", f"Repository {full_name} already exists in your local library!")
+                else:
+                    if button:
+                        button.configure(state="normal", text="⚡ Clone")
+                    messagebox.showerror("Error", result.get("error", "Failed to clone repository"))
+
+            self.after(0, on_done)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _clone_from_search(self, repo):
+        self._async_clone_from_search(repo)
 
     # ==========================================
     # 6. ADD REPOSITORY VIEW

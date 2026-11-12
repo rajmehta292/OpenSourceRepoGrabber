@@ -86,3 +86,4 @@ Set-Content -Path (Join-Path $projectsLauncherDir "Launch-OpenSourceRepoGrabber.
 Set-Content -Path (Join-Path $repoDir "launch.bat") -Value $batContent -Encoding ASCII
 
 Write-Host "==> Done! Official application launcher is ready in C:\ProjectsLauncher." -ForegroundColor Green
+

@@ -123,7 +123,7 @@ class RepoManager:
             response = requests.get(url, timeout=10)
             if response.status_code == 200:
                 data = response.json()
-                return data.get("license", {}).get("spdx_id", "")
+                return (data.get("license") or {}).get("spdx_id", "")
         except Exception as e:
             logger.error(f"Error fetching license: {e}")
         return None
@@ -160,6 +160,7 @@ class RepoManager:
             
             # Determine target folder
             target_folder = self._get_license_folder(license_spdx)
+            target_folder.mkdir(parents=True, exist_ok=True)
             repo_path = target_folder / f"{owner}_{name}"
             
             # Check if already exists in any folder

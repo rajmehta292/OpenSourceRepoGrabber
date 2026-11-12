@@ -80,9 +80,20 @@ pip install -r requirements.txt
 ```
 
 ### 3. Run the Application
-```bash
-python run.py
-```
+You can run the application using any of the following methods:
+
+- **Desktop & Projects Launcher (Recommended)**:
+  - Launch from `C:\ProjectsLauncher\OpenSource Repo Grabber.lnk` or `OpenSourceRepoGrabber.exe`
+  - Launch from Windows Start Menu: Search for **OpenSource Repo Grabber**
+  - Run `launch.bat` in the repository root
+- **Command Line**:
+  ```bash
+  python run.py
+  ```
+- **Reinstall / Rebuild Launchers & Shortcuts**:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File create_launcher.ps1
+  ```
 
 ### 4. Optional GitHub Token Setup
 To increase your GitHub API rate limits from 60 to 5,000 requests/hour, set your Personal Access Token in environment variables or `config.py`:

@@ -142,6 +142,14 @@ class RepoGrabberApp(ctk.CTk):
         self.geometry(f"{config.WINDOW_DEFAULT_WIDTH}x{config.WINDOW_DEFAULT_HEIGHT}")
         self.minsize(config.WINDOW_MIN_WIDTH, config.WINDOW_MIN_HEIGHT)
 
+        # Set official application icon
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.ico")
+        if os.path.exists(icon_path):
+            try:
+                self.iconbitmap(icon_path)
+            except Exception as e:
+                logger.debug(f"Could not set window icon: {e}")
+
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 

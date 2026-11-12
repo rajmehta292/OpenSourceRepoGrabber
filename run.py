@@ -4,6 +4,15 @@ OpenSource Repo Grabber - Launcher Script
 """
 import sys
 import os
+import ctypes
+
+# Set Windows AppUserModelID so taskbar icon and grouping are distinct
+if sys.platform == "win32":
+    try:
+        app_id = "RajMehta.OpenSourceRepoGrabber.App.1.0"
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(app_id)
+    except Exception:
+        pass
 
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

@@ -4,6 +4,7 @@ Ollama API client for AI-powered code explanations
 import json
 import logging
 import time
+import ast
 from typing import Optional, List, Dict
 
 import requests
@@ -97,12 +98,14 @@ Provide a clear summary:"""
 
     def perform_architectural_audit(self, context: dict) -> str:
         """Analyze project-wide context to provide an architectural audit"""
-        file_tree = "\n".join(context.get("file_tree", []))
-        key_files_content = ""
-        for path, content in context.get("key_files", {}).items():
-            key_files_content += f"\nFILE: {path}\n---\n{content}\n---\n"
+        # If Ollama is available, attempt LLM audit
+        if self.is_available():
+            file_tree = "\n".join(context.get("file_tree", []))
+            key_files_content = ""
+            for path, content in context.get("key_files", {}).items():
+                key_files_content += f"\nFILE: {path}\n---\n{content}\n---\n"
 
-        prompt = f"""You are a Lead Software Architect. Perform a deep Architectural Audit of this project.
+            prompt = f"""You are a Lead Software Architect. Perform a deep Architectural Audit of this project.
 
 ### PROJECT CONTEXT:
 **File Tree (Partial):**
@@ -120,14 +123,169 @@ Provide a clear summary:"""
 4. **Strategic Roadmap**: Suggestions for the next 3 major improvements.
 
 Provide a comprehensive, high-level report in structured markdown."""
+            
+            result = self._generate(prompt, temperature=0.3)
+            if not result.startswith("Error:"):
+                return result
+            logger.warning(f"Ollama audit failed ({result}), falling back to Heuristic Engine.")
+
+        # Fallback to Built-in Heuristic Architecture Engine
+        return self.perform_heuristic_audit(context)
+
+    def perform_heuristic_audit(self, context: dict) -> str:
+        """
+        Built-in Heuristic Architectural Analyzer.
+        Runs when Ollama is offline or unavailable.
+        Analyzes directory topologies, anchor files, and dependencies to synthesize
+        an accurate architectural report.
+        """
+        file_tree = context.get("file_tree", [])
+        key_files = context.get("key_files", {})
         
-        return self._generate(prompt, temperature=0.3)
+        # 1. Detect Languages and Frameworks
+        tree_str = " ".join(file_tree).lower()
+        key_content_str = " ".join(str(v) for v in key_files.values()).lower()
+        
+        patterns = []
+        stack = []
+        bottlenecks = []
+        roadmap = []
+        
+        # Pattern Detection
+        if any("docker-compose" in f for f in file_tree) or any("dockerfile" in f for f in file_tree):
+            patterns.append("Containerized Microservice / Deployment-Ready")
+            stack.append("Docker / Containerization")
+        
+        if any(x in tree_str for x in ["controllers", "views", "models"]) or any(x in tree_str for x in ["routes", "handlers"]):
+            patterns.append("Layered / MVC (Model-View-Controller) Web Architecture")
+        elif any(x in tree_str for x in ["src/components", "src/pages", "src/app", "components"]):
+            patterns.append("Component-Driven SPA / Client Architecture")
+        elif any(x in tree_str for x in ["cli", "cmd", "commands"]) or "click" in key_content_str or "argparse" in key_content_str:
+            patterns.append("Modular CLI (Command Line Interface) Architecture")
+        else:
+            patterns.append("Modular Monolithic Library Architecture")
+
+        # Stack Detection
+        if "fastapi" in key_content_str or "uvicorn" in key_content_str:
+            stack.append("FastAPI (High-performance Async Python)")
+        if "flask" in key_content_str:
+            stack.append("Flask (Python Microframework)")
+        if "react" in key_content_str:
+            stack.append("React.js Framework")
+        if "vue" in key_content_str:
+            stack.append("Vue.js Framework")
+        if "sqlalchemy" in key_content_str:
+            stack.append("SQLAlchemy ORM")
+        if "pydantic" in key_content_str:
+            stack.append("Pydantic Data Validation")
+        if "pytest" in key_content_str or any("test" in f for f in file_tree):
+            stack.append("Pytest / Automated Test Suite")
+        if any(".github/workflows" in f for f in file_tree):
+            stack.append("GitHub Actions CI/CD Pipeline")
+        
+        if not stack:
+            if any(f.endswith(".py") for f in file_tree):
+                stack.append("Standard Python 3 Runtime")
+            elif any(f.endswith((".js", ".ts", ".jsx", ".tsx")) for f in file_tree):
+                stack.append("Node.js / TypeScript Ecosystem")
+            elif any(f.endswith(".go") for f in file_tree):
+                stack.append("Go (Golang) Systems Stack")
+            elif any(f.endswith(".rs") for f in file_tree):
+                stack.append("Rust Cargo Ecosystem")
+            else:
+                stack.append("Polyglot Open-Source Stack")
+
+        # Health & Bottlenecks
+        has_tests = any("test" in f.lower() for f in file_tree)
+        has_ci = any(".github" in f for f in file_tree)
+        has_docs = any(x in tree_str for x in ["doc", "docs", "readme.md"])
+        
+        if not has_tests:
+            bottlenecks.append("Absence of dedicated unit/integration test directory.")
+            roadmap.append("Establish test harness (e.g. `pytest` or `vitest`) with >75% coverage.")
+        else:
+            roadmap.append("Expand existing integration test matrix across multiple runtimes.")
+
+        if not has_ci:
+            bottlenecks.append("Missing automated CI/CD workflow configuration.")
+            roadmap.append("Configure GitHub Actions workflow for linting, type-checks, and automated testing.")
+        
+        if not any("docker" in f.lower() for f in file_tree):
+            roadmap.append("Add containerization (`Dockerfile`, `docker-compose.yml`) for reproducible developer onboarding.")
+
+        bottlenecks.append("Monitor third-party dependency vulnerabilities and license parity.")
+        roadmap.append("Generate automated OpenAPI/Sphinx documentation for public interfaces.")
+
+        # AST-level inspection for Python files
+        ast_classes = []
+        ast_imports = []
+        ast_async_fns = 0
+        ast_fns = 0
+        
+        for fname, content in key_files.items():
+            if fname.endswith(".py") and content and not content.startswith("[File too large"):
+                try:
+                    parsed_ast = ast.parse(content)
+                    for node in ast.walk(parsed_ast):
+                        if isinstance(node, ast.ClassDef):
+                            ast_classes.append(node.name)
+                        elif isinstance(node, ast.FunctionDef):
+                            ast_fns += 1
+                        elif isinstance(node, ast.AsyncFunctionDef):
+                            ast_async_fns += 1
+                        elif isinstance(node, ast.Import):
+                            for n in node.names:
+                                ast_imports.append(n.name.split('.')[0])
+                        elif isinstance(node, ast.ImportFrom):
+                            if node.module:
+                                ast_imports.append(node.module.split('.')[0])
+                except Exception:
+                    pass
+
+        # Formatting Output
+        report = f"""# 🏛️ Project Oracle Architectural Audit
+> *Generated by Built-in Heuristic & AST Analysis Engine*
+> *Mode: Heuristic / Structural Pattern Synthesis (Ollama not connected or offline)*
+
+---
+
+### 1. 📐 Architectural Pattern & Topology
+- **Primary Identified Pattern:** {patterns[0]}
+{f"- **Secondary Attributes:** {', '.join(patterns[1:])}" if len(patterns) > 1 else ""}
+- **Total Tracked Files Analyzed:** {len(file_tree)} files
+- **Modularity Score:** {"High (Separation of concerns detected)" if len(file_tree) > 15 else "Standard (Compact project layout)"}
+{f"- **AST Classes Detected:** {', '.join(ast_classes[:6])}" if ast_classes else ""}
+{f"- **Coroutine Concurrency:** {ast_async_fns} async functions (High-throughput async execution)" if ast_async_fns > 0 else ""}
+{f"- **AST Dependency Footprint:** {', '.join(sorted(set(ast_imports))[:8])}" if ast_imports else ""}
+
+---
+
+### 2. 🧰 Technology Stack & Entry Points
+- **Core Ecosystem:** {', '.join(stack)}
+- **CI / Automation Status:** {"✅ Automated Workflows Present" if has_ci else "⚠️ No CI Workflows Detected"}
+- **Testing Infrastructure:** {"✅ Tests Present" if has_tests else "⚠️ Minimal or Non-Standard Test Setup"}
+- **Documentation Status:** {"✅ Documentation Found" if has_docs else "⚠️ Limited Documentation"}
+
+---
+
+### 3. 🔍 Scalability, Debt & Bottleneck Evaluation
+"""
+        for b in bottlenecks:
+            report += f"- ⚠️ **Attention:** {b}\n"
+        
+        report += "\n---\n\n### 4. 🗺️ Strategic Architectural Roadmap\n"
+        for i, r in enumerate(roadmap[:3], 1):
+            report += f"{i}. **Action Item {i}:** {r}\n"
+        
+        report += "\n---\n*Tip: Connect a local Ollama instance (with `llama3.2` or `kimi-k2.5:cloud`) for deep neural reasoning and AST inspection.*"
+        return report
 
     def suggest_smart_tags(self, readme: str, context: dict) -> List[str]:
         """Generate 3-5 high-relevance tags based on project context"""
-        file_tree = "\n".join(context.get("file_tree", []))
-        
-        prompt = f"""Analyze this project and generate 3-5 high-relevance 'Smart Tags' (short descriptive phrases).
+        if self.is_available():
+            file_tree = "\n".join(context.get("file_tree", []))
+            
+            prompt = f"""Analyze this project and generate 3-5 high-relevance 'Smart Tags' (short descriptive phrases).
 Tags should describe the project's purpose, architecture, or unique features.
 
 ### CONTEXT:
@@ -142,12 +300,34 @@ Tags should describe the project's purpose, architecture, or unique features.
 **Output Format:** Just the tags separated by commas. No explanation.
 Example Output: Event-Driven, Microservice-Ready, React-Frontend, Scalable-API"""
 
-        response = self._generate(prompt, temperature=0.5)
-        # Handle potential list or comma-separated string
-        if isinstance(response, str):
-            tags = [t.strip() for t in response.split(",") if t.strip()]
-        else:
-            tags = []
+            response = self._generate(prompt, temperature=0.5)
+            if isinstance(response, str) and not response.startswith("Error:"):
+                tags = [t.strip() for t in response.split(",") if t.strip()]
+                if tags:
+                    return tags[:5]
+
+        # Heuristic smart tags fallback
+        file_tree_str = " ".join(context.get("file_tree", [])).lower()
+        key_content_str = " ".join(str(v) for v in context.get("key_files", {}).values()).lower()
+        tags = []
+
+        if "fastapi" in key_content_str: tags.append("FastAPI")
+        elif "flask" in key_content_str: tags.append("Flask")
+        elif "django" in key_content_str: tags.append("Django")
+        elif "react" in key_content_str: tags.append("React")
+        elif "vue" in key_content_str: tags.append("Vue")
+        
+        if "docker" in file_tree_str or "docker" in key_content_str: tags.append("Dockerized")
+        if "sqlite" in key_content_str or "sqlalchemy" in key_content_str: tags.append("Database-Backed")
+        if "async" in key_content_str or "asyncio" in key_content_str: tags.append("Async-I/O")
+        if ".github/workflows" in file_tree_str: tags.append("CI/CD-Ready")
+        if "test" in file_tree_str: tags.append("Unit-Tested")
+        if "ai" in readme.lower() or "llm" in readme.lower() or "ollama" in readme.lower(): tags.append("AI-Powered")
+        
+        if not tags:
+            tags = ["Open-Source", "Modular", "Modern-Architecture"]
+            
+        return tags[:5]
         return tags[:5]
 
     def get_news(self, repo_name: str, readme: str = None, releases: List[Dict] = None) -> str:

@@ -429,6 +429,79 @@ class RepoManager:
         context["file_tree"] = context["file_tree"][:200]
         return context
     
+    def get_repo_file_tree(self, repo_path: str, max_files: int = 150) -> List[str]:
+        """Get a list of file paths in the repo for visual exploration"""
+        path = Path(repo_path)
+        if not path.exists():
+            return []
+        
+        file_list = []
+        exclude_dirs = {".git", "node_modules", "__pycache__", "venv", ".venv", "dist", "build"}
+        try:
+            for root, dirs, files in os.walk(path):
+                dirs[:] = [d for d in dirs if d not in exclude_dirs]
+                rel_root = os.path.relpath(root, path)
+                if rel_root != ".":
+                    file_list.append(f"📁 {rel_root}/")
+                for f in sorted(files):
+                    if len(file_list) >= max_files:
+                        file_list.append("... (and more files)")
+                        return file_list
+                    file_list.append(f"   📄 {f}")
+        except Exception as e:
+            logger.error(f"Error building file tree: {e}")
+        return file_list
+
+    def get_repo_stats(self, repo_path: str) -> dict:
+        """Calculate statistics about local repository"""
+        path = Path(repo_path)
+        if not path.exists():
+            return {"file_count": 0, "size_mb": 0.0}
+        
+        total_size = 0
+        file_count = 0
+        exclude_dirs = {".git", "node_modules", "__pycache__", "venv", ".venv", "dist", "build"}
+        for root, dirs, files in os.walk(path):
+            dirs[:] = [d for d in dirs if d not in exclude_dirs]
+            for f in files:
+                file_count += 1
+                try:
+                    total_size += os.path.getsize(os.path.join(root, f))
+                except:
+                    pass
+        return {
+            "file_count": file_count,
+            "size_mb": round(total_size / (1024 * 1024), 2)
+        }
+
+    def open_in_editor(self, repo_path: str, preferred: str = "auto") -> bool:
+        """Launch code editor (VS Code, Cursor, Windsurf) or Explorer fallback"""
+        editors = []
+        if preferred == "cursor":
+            editors = ["cursor", "code", "explorer"]
+        elif preferred == "windsurf":
+            editors = ["windsurf", "code", "explorer"]
+        elif preferred == "code":
+            editors = ["code", "cursor", "explorer"]
+        else:
+            editors = ["cursor", "code", "windsurf", "explorer"]
+
+        for ed in editors:
+            try:
+                if ed == "explorer":
+                    subprocess.Popen(["explorer", repo_path])
+                    return True
+                else:
+                    result = subprocess.run(["where.exe", ed], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        subprocess.Popen([ed, repo_path])
+                        return True
+            except Exception:
+                continue
+        
+        self.open_in_explorer(repo_path)
+        return True
+
     def open_in_explorer(self, repo_path: str):
         """Open repo folder in Windows Explorer"""
         try:

@@ -1,77 +1,115 @@
 # 🚀 OpenSource Repo Grabber (OSRG)
 
-**OpenSource Repo Grabber** is a powerful desktop application designed to monitor and explore the open-source ecosystem. It tracks top-starred and trending repositories on GitHub, providing detailed insights, version history, and AI-powered code explanations.
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![UI: CustomTkinter](https://img.shields.io/badge/UI-CustomTkinter-emerald.svg)](https://github.com/TomSchimansky/CustomTkinter)
+[![AI: Project Oracle](https://img.shields.io/badge/AI-Project%20Oracle%20%2B%20Heuristic-green.svg)]()
 
-## 🌟 Project Oracle (AI Intelligence)
-Recently upgraded with **Project Oracle**, featuring:
-- **Deep Architectural Audits**: Full project analysis using multi-file context.
-- **Smart Tagging**: AI-powered project categorization.
-- **Analysis Agent**: Specialized `kimi-k2.5:cloud` integration for elite code explanation.
-- **Earthy Glassmorphism**: A beautiful, inspired UI overhaul.
+**OpenSource Repo Grabber (OSRG)** is an advanced desktop command center designed to monitor, explore, audit, and contribute to the global open-source software ecosystem.
 
-![OSRG Preview](https://via.placeholder.com/1200x800.png?text=OpenSource+Repo+Grabber+UI)
-
-## ✨ Key Features
-
--   **Perpetual Scanning:** Background service that automatically updates repository data every 30 minutes (configurable).
--   **Curated Tracking:** Monitors the top 30 all-time starred and top 30 trending repositories with permissive licenses (MIT, Apache 2.0, BSD).
--   **Deep Insights:** View READMEs, release history, recent commits, and top contributors for every project.
--   **AI-Powered Explanations:** Integrated with **Ollama** to provide intelligent code explanations and project summaries.
--   **Local Storage:** All data is cached locally in a SQLite database for fast, offline access.
--   **Integrated Browser:** Browse repository pages directly within the application.
--   **Beautiful UI:** Modern dark-themed interface built with `customtkinter`.
-
-## 🛠️ Technology Stack
-
--   **Backend:** Python 3.x
--   **GUI:** `customtkinter`
--   **Database:** SQLite
--   **AI Integration:** Ollama API
--   **External APIs:** GitHub REST API
-
-## 📋 Prerequisites
-
--   **Python 3.8+**
--   **Ollama:** (Optional, for AI features) Ensure Ollama is installed and running locally.
--   **GitHub Token:** (Recommended) To avoid API rate limits, get a Personal Access Token (PAT) from GitHub.
-
-## 🚀 Getting Started
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/yourusername/OpenSourceRepoGrabber.git
-    cd OpenSourceRepoGrabber
-    ```
-
-2.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-3.  **Configuration:**
-    Open `config.py` and add your GitHub token to avoid rate limits:
-    ```python
-    GITHUB_TOKEN = "your_github_token_here"
-    ```
-
-4.  **Run the application:**
-    ```bash
-    python run.py
-    ```
-
-## 🤖 AI Integration (Ollama)
-
-To enable AI code explanations, ensure [Ollama](https://ollama.ai/) is installed and running. By default, the app looks for Ollama at `http://localhost:11434`.
-
-Recommended models:
--   `llama3.2`
--   `qwen2.5`
--   `mistral`
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Whether you are a **tinkerer** looking to play with cool projects, a **software architect** auditing patterns and tech stacks, or an **aspiring open-source contributor** making your first pull request, OSRG gives you an unfair advantage.
 
 ---
 
-*Made with ❤️ for the Open Source Community.*
+## 🌟 Tailored for 3 Developer Journeys
+
+```
+                    ┌────────────────────────┐
+                    │      OSRG Hub          │
+                    └───────────┬────────────┘
+         ┌──────────────────────┼──────────────────────┐
+         ▼                      ▼                      ▼
+  ⚡ The Tinkerer        🏗️ The Builder         🌱 The Contributor
+ • Quick README modal    • Oracle Architecture   • Good First Issues
+ • In-app File Tree      • Pattern Detection     • License Decoder
+ • 1-Click Starter Pack  • Smart Editor Launch   • 5-Step PR Checklist
+ • Code Explanation      • Git Sync & Auditing   • Git Cheat Sheet
+```
+
+### 1. ⚡ The Tinkerer & Explorer
+- **Zero-Friction Previews**: Inspect full `README.md` contents and explore recursive file trees without needing to clone gigabytes of code.
+- **Curated Starter Packs**: One-click import for iconic libraries (*FastAPI, Flask, Rich, uv, shadcn/ui*).
+- **AI Code Spark**: Instantly explain any function, script, or component using Project Oracle or the built-in Heuristic engine.
+
+### 2. 🏗️ The Deep Builder & Architect
+- **Project Oracle Architecture Audits**: Multi-file context extraction detects architectural patterns (MVC, Layered, Microservices, Event-Driven), discovers tech stacks, evaluates technical debt, and synthesizes a strategic technical roadmap.
+- **Smart Semantic Tagging**: AI and heuristic tags auto-classify projects (e.g. `FastAPI`, `Dockerized`, `Async-I/O`, `CI/CD-Ready`).
+- **Seamless IDE Integration**: Launch projects directly into **Cursor**, **VS Code**, **Windsurf**, or system explorer.
+- **License-Based Organization**: Local storage automatically files repositories into clean SPDX-compliant folders (`MIT`, `Apache-2.0`, `BSD-3-Clause`, etc.).
+
+### 3. 🌱 The Open-Source Learner & Contributor
+- **Good First Issues Launchpad**: Filter and search GitHub repositories actively seeking beginner contributions with `good-first-issue` and `help-wanted` tags.
+- **Interactive License Decoder**: Plain-English guide to open-source licenses (MIT vs Apache 2.0 vs BSD vs GPL vs AGPL)—understand commercial rights, patent grants, and copyleft obligations with clarity.
+- **First PR Checklist**: Step-by-step interactive workflow guiding you from forking and local branch setup to Conventional Commits and submitting pull requests.
+
+---
+
+## ✨ Key Features & Architecture
+
+- **Welcome & Overview Hub**: First-time user experience featuring live project KPIs, system status indicators, quick action launchpads, and curated starter repositories.
+- **Resilient Dual-Engine Intelligence**:
+  - **Local Neural Engine (Ollama)**: Seamlessly connects to `llama3.2`, `qwen2.5`, `kimi-k2.5:cloud`, or `mistral`.
+  - **Built-in Heuristic Architecture Engine**: Automatically analyzes directory structures, anchor configs (`package.json`, `pyproject.toml`, `Dockerfile`), and dependencies to generate architectural audits even when Ollama is offline.
+- **Rate-Limit Resilience**: Gracefully handles GitHub unauthenticated API restrictions with smart caching and curated offline fallbacks.
+- **Earthy Glassmorphism UI**: Beautiful, refined interface with dark/light themes inspired by minimalist industrial design.
+
+---
+
+## 🚀 Getting Started
+
+### 1. Prerequisites
+- **Python 3.8+** (Python 3.10–3.12 recommended)
+- **Git** installed on your system
+- **Ollama** (Optional, for neural AI features): [ollama.ai](https://ollama.ai)
+
+### 2. Installation
+```bash
+# Clone the repository
+git clone https://github.com/rajmehta292/OpenSourceRepoGrabber.git
+cd OpenSourceRepoGrabber
+
+# Create and activate virtual environment
+python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# Linux/macOS:
+source .venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+```
+
+### 3. Run the Application
+```bash
+python run.py
+```
+
+### 4. Optional GitHub Token Setup
+To increase your GitHub API rate limits from 60 to 5,000 requests/hour, set your Personal Access Token in environment variables or `config.py`:
+```bash
+set GITHUB_TOKEN=ghp_your_token_here
+```
+
+---
+
+## 🧪 Running Test Suites
+
+OSRG includes an automated verification suite:
+
+```bash
+# Run Oracle & context persistence tests
+python tests_oracle.py
+
+# Run Ollama resilience & retry tests
+python tests_ollama.py
+
+# Run enhancements, heuristic audit, and contributor suite tests
+python tests_enhancements.py
+```
+
+---
+
+## 📄 License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+*Made with ❤️ for the Global Open Source Community.*

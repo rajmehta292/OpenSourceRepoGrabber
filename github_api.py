@@ -190,8 +190,6 @@ class GitHubClient:
                     except Exception as item_err:
                         logger.debug(f"Skipping malformed repository item: {item_err}")
 
-                time.sleep(0.3)
-
             except RateLimitError:
                 logger.warning("Rate limited during trending repos fetch")
                 break
@@ -345,17 +343,22 @@ class GitHubClient:
             logger.debug(f"Could not fetch contributors for {owner}/{repo}: {e}")
             return []
 
-    def get_rate_limit_status(self) -> dict:
-        """Get current rate limit status"""
+    def get_rate_limit_status(self, force_refresh: bool = False) -> dict:
+        """Get current rate limit status with 60s memory caching to protect UI response times"""
+        now = time.time()
+        if not force_refresh and hasattr(self, "_cached_rate_status") and (now - getattr(self, "_rate_status_time", 0) < 60):
+            return self._cached_rate_status
         try:
             data = self.get("/rate_limit", use_cache=False)
             if data and "rate" in data:
-                return {
+                self._cached_rate_status = {
                     "remaining": data["rate"]["remaining"],
                     "limit": data["rate"]["limit"],
                     "reset": datetime.fromtimestamp(data["rate"]["reset"]),
                     "authenticated": bool(self.token)
                 }
+                self._rate_status_time = now
+                return self._cached_rate_status
         except Exception:
             pass
         return {

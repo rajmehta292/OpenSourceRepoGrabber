@@ -22,9 +22,9 @@ class OllamaClient:
         self.session.headers["Content-Type"] = "application/json"
 
     def is_available(self) -> bool:
-        """Check if Ollama is running"""
+        """Check if Ollama is running (fast localhost check)"""
         try:
-            response = self.session.get(f"{self.base_url}/api/tags", timeout=5)
+            response = self.session.get(f"{self.base_url}/api/tags", timeout=0.6)
             return response.status_code == 200
         except Exception:
             return False
@@ -32,7 +32,7 @@ class OllamaClient:
     def get_available_models(self) -> List[str]:
         """Get list of available models"""
         try:
-            response = self.session.get(f"{self.base_url}/api/tags", timeout=5)
+            response = self.session.get(f"{self.base_url}/api/tags", timeout=1.0)
             if response.status_code == 200:
                 data = response.json()
                 return [m["name"] for m in data.get("models", [])]

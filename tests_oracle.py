@@ -5,7 +5,7 @@ from pathlib import Path
 import unittest
 
 # Add parent dir to path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import config
 from repo_manager import get_repo_manager

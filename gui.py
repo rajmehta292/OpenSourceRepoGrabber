@@ -23,6 +23,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Native system font optimizations (eliminates GDI font enumeration delays on Windows)
+UI_FONT = "Segoe UI" if os.name == "nt" else "Inter"
+CODE_FONT = "Consolas" if os.name == "nt" else "Courier"
+
+_FONT_CACHE = {}
+
+def get_font(size=12, weight="normal", family=None):
+    """Retrieve or create cached CTkFont singleton to eliminate GDI font churn."""
+    fam = family or UI_FONT
+    key = (fam, size, weight)
+    if key not in _FONT_CACHE:
+        _FONT_CACHE[key] = ctk.CTkFont(family=fam, size=size, weight=weight)
+    return _FONT_CACHE[key]
+
 
 class ToolTipManager:
     """Singleton to manage a single tooltip window for the entire app with debouncing."""
@@ -74,7 +88,7 @@ class ToolTipManager:
             
             label = ctk.CTkLabel(
                 tw, text=text, justify="left",
-                padx=12, pady=8, font=ctk.CTkFont(family="Inter", size=12)
+                padx=12, pady=8, font=get_font(12)
             )
             label.pack()
             self.is_shown = True
@@ -171,9 +185,30 @@ class RepoGrabberApp(ctk.CTk):
         self.good_first_issues = []
         self.current_repo = None
 
+        # Performance & Caching State
+        self._trending_cache = {}
+        self._issues_cache = {}
+        self._search_cache = {}
+        self._trending_loaded = False
+        self._learner_loaded = False
+        self._current_render_id = 0
+        self._kpi_labels = {}
+
+        # Global Keyboard Shortcuts
+        self.bind("<Control-f>", lambda e: self._focus_search())
+        self.bind("<Escape>", lambda e: self._on_escape())
+
         self._create_sidebar()
         self._create_main_content()
         self._load_repos()
+
+    def safe_after(self, delay, callback):
+        """Safely schedule a callback on the UI thread without crashing if window is closed."""
+        try:
+            if self.winfo_exists():
+                self.after(delay, callback)
+        except Exception:
+            pass
 
     def _on_app_focus_out(self, event=None):
         manager = ToolTipManager.get_instance()
@@ -199,7 +234,7 @@ class RepoGrabberApp(ctk.CTk):
         self.logo_label = ctk.CTkLabel(
             self.sidebar,
             text="OSRG",
-            font=ctk.CTkFont(family="Inter", size=28, weight="bold"),
+            font=get_font(28, "bold"),
             text_color=("#2C342C", "#10B981")
         )
         self.logo_label.pack(pady=(40, 25), padx=24, anchor="w")
@@ -250,7 +285,7 @@ class RepoGrabberApp(ctk.CTk):
         theme_frame = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         theme_frame.pack(fill="x", padx=15, pady=10)
         
-        ctk.CTkLabel(theme_frame, text="Night Mode", font=ctk.CTkFont(size=12)).pack(side="left")
+        ctk.CTkLabel(theme_frame, text="Night Mode", font=get_font(12)).pack(side="left")
         
         self.theme_switch = ctk.CTkSwitch(
             theme_frame,
@@ -314,14 +349,14 @@ class RepoGrabberApp(ctk.CTk):
         ctk.CTkLabel(
             title_box,
             text="OpenSource Repo Grabber",
-            font=ctk.CTkFont(family="Inter", size=26, weight="bold"),
+            font=get_font(26, "bold"),
             text_color=("#1D1D1F", "#ECF0ED")
         ).pack(anchor="w")
         
         ctk.CTkLabel(
             title_box,
             text="Your Command Center to discover, audit, learn, and contribute to top open-source projects.",
-            font=ctk.CTkFont(family="Inter", size=13),
+            font=get_font(13),
             text_color=("gray50", "gray65")
         ).pack(anchor="w", pady=(2, 0))
 
@@ -336,7 +371,7 @@ class RepoGrabberApp(ctk.CTk):
             corner_radius=10,
             fg_color=("gray90", "#202924"),
             text_color=("#1D1D1F", "#ECF0ED"),
-            font=ctk.CTkFont(family="Inter", size=12, weight="bold"),
+            font=get_font(12, "bold"),
             command=self._prompt_github_token
         ).pack(side="left", padx=5)
         
@@ -349,7 +384,7 @@ class RepoGrabberApp(ctk.CTk):
             fg_color=("#5E6C54", "#10B981"),
             hover_color=("#4F5B46", "#059669"),
             text_color="white",
-            font=ctk.CTkFont(family="Inter", weight="bold"),
+            font=get_font(12, "bold"),
             command=self._refresh_overview
         ).pack(side="left", padx=5)
 
@@ -365,7 +400,7 @@ class RepoGrabberApp(ctk.CTk):
         ctk.CTkLabel(
             personas_card,
             text="🎯 Tailored for Every Developer Journey",
-            font=ctk.CTkFont(family="Inter", size=16, weight="bold"),
+            font=get_font(16, "bold"),
             text_color=("#2C342C", "#10B981")
         ).pack(anchor="w", padx=20, pady=(15, 10))
 
@@ -375,24 +410,24 @@ class RepoGrabberApp(ctk.CTk):
 
         p1 = ctk.CTkFrame(personas_grid, corner_radius=10, fg_color=("#FFFFFF", "#1E2621"))
         p1.grid(row=0, column=0, padx=6, pady=5, sticky="nsew")
-        ctk.CTkLabel(p1, text="⚡ The Tinkerer", font=ctk.CTkFont(family="Inter", size=14, weight="bold")).pack(anchor="w", padx=12, pady=(10, 4))
-        ctk.CTkLabel(p1, text="Instant README previews, directory tree inspection without heavy cloning, and AI code breakdowns.", wraplength=220, justify="left", font=ctk.CTkFont(size=11), text_color=("gray40", "gray70")).pack(anchor="w", padx=12, pady=(0, 10))
+        ctk.CTkLabel(p1, text="⚡ The Tinkerer", font=get_font(14, "bold")).pack(anchor="w", padx=12, pady=(10, 4))
+        ctk.CTkLabel(p1, text="Instant README previews, directory tree inspection without heavy cloning, and AI code breakdowns.", wraplength=220, justify="left", font=get_font(11), text_color=("gray40", "gray70")).pack(anchor="w", padx=12, pady=(0, 10))
 
         p2 = ctk.CTkFrame(personas_grid, corner_radius=10, fg_color=("#FFFFFF", "#1E2621"))
         p2.grid(row=0, column=1, padx=6, pady=5, sticky="nsew")
-        ctk.CTkLabel(p2, text="🏗️ The Builder & Architect", font=ctk.CTkFont(family="Inter", size=14, weight="bold")).pack(anchor="w", padx=12, pady=(10, 4))
-        ctk.CTkLabel(p2, text="Multi-file Project Oracle audits, pattern detection (MVC, Microservices), smart tagging, and IDE launch.", wraplength=220, justify="left", font=ctk.CTkFont(size=11), text_color=("gray40", "gray70")).pack(anchor="w", padx=12, pady=(0, 10))
+        ctk.CTkLabel(p2, text="🏗️ The Builder & Architect", font=get_font(14, "bold")).pack(anchor="w", padx=12, pady=(10, 4))
+        ctk.CTkLabel(p2, text="Multi-file Project Oracle audits, pattern detection (MVC, Microservices), smart tagging, and IDE launch.", wraplength=220, justify="left", font=get_font(11), text_color=("gray40", "gray70")).pack(anchor="w", padx=12, pady=(0, 10))
 
         p3 = ctk.CTkFrame(personas_grid, corner_radius=10, fg_color=("#FFFFFF", "#1E2621"))
         p3.grid(row=0, column=2, padx=6, pady=5, sticky="nsew")
-        ctk.CTkLabel(p3, text="🌱 The OSS Contributor", font=ctk.CTkFont(family="Inter", size=14, weight="bold")).pack(anchor="w", padx=12, pady=(10, 4))
-        ctk.CTkLabel(p3, text="Good First Issues finder, plain-English License Decoder, and step-by-step first PR checklists.", wraplength=220, justify="left", font=ctk.CTkFont(size=11), text_color=("gray40", "gray70")).pack(anchor="w", padx=12, pady=(0, 10))
+        ctk.CTkLabel(p3, text="🌱 The OSS Contributor", font=get_font(14, "bold")).pack(anchor="w", padx=12, pady=(10, 4))
+        ctk.CTkLabel(p3, text="Good First Issues finder, plain-English License Decoder, and step-by-step first PR checklists.", wraplength=220, justify="left", font=get_font(11), text_color=("gray40", "gray70")).pack(anchor="w", padx=12, pady=(0, 10))
 
         # Quick Actions Row
         actions_frame = ctk.CTkFrame(view, fg_color="transparent")
         actions_frame.pack(fill="x", padx=25, pady=10)
         
-        ctk.CTkLabel(actions_frame, text="⚡ Quick Actions", font=ctk.CTkFont(family="Inter", size=16, weight="bold")).pack(anchor="w", pady=(0, 8))
+        ctk.CTkLabel(actions_frame, text="⚡ Quick Actions", font=get_font(16, "bold")).pack(anchor="w", pady=(0, 8))
         
         btns_row = ctk.CTkFrame(actions_frame, fg_color="transparent")
         btns_row.pack(fill="x")
@@ -413,7 +448,7 @@ class RepoGrabberApp(ctk.CTk):
                 corner_radius=8,
                 fg_color=col,
                 text_color=tc,
-                font=ctk.CTkFont(family="Inter", size=12, weight="bold"),
+                font=get_font(12, "bold"),
                 command=lambda k=view_key: self._switch_view(k)
             )
             b.pack(side="left", padx=(0, 8))
@@ -422,7 +457,7 @@ class RepoGrabberApp(ctk.CTk):
         starters_frame = ctk.CTkFrame(view, fg_color="transparent")
         starters_frame.pack(fill="x", padx=25, pady=(15, 25))
         
-        ctk.CTkLabel(starters_frame, text="⭐ Curated Starter Projects (1-Click Explore)", font=ctk.CTkFont(family="Inter", size=16, weight="bold")).pack(anchor="w", pady=(0, 8))
+        ctk.CTkLabel(starters_frame, text="⭐ Curated Starter Projects (1-Click Explore)", font=get_font(16, "bold")).pack(anchor="w", pady=(0, 8))
         
         for starter in CURATED_STARTER_REPOS[:4]:
             self._create_starter_card(starters_frame, starter)
@@ -432,36 +467,79 @@ class RepoGrabberApp(ctk.CTk):
             w.destroy()
         
         self.overview_kpi_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        self._kpi_labels = {}
         
         cloned_count = len(self.repos)
         folders_dict = self.repo_manager.get_all_license_folders()
         active_folders = sum(1 for f in folders_dict.values() if f.get("count", 0) > 0)
         
-        rate_info = self.github.get_rate_limit_status()
-        rate_rem = rate_info.get("remaining", 60)
-        rate_lim = rate_info.get("limit", 60)
-        rate_auth = rate_info.get("authenticated", False)
-        rate_text = f"{rate_rem}/{rate_lim} req"
-        rate_sub = "Authenticated PAT" if rate_auth else "Rate Guard Active"
+        # Immediate display from cache if available, else lightweight placeholder
+        cached_rate = getattr(self.github, "_rate_limit_cache", None)
+        if cached_rate:
+            rate_rem = cached_rate.get("remaining", 60)
+            rate_lim = cached_rate.get("limit", 60)
+            rate_auth = cached_rate.get("authenticated", False)
+            rate_text = f"{rate_rem}/{rate_lim} req"
+            rate_sub = "Authenticated PAT" if rate_auth else "Rate Guard Active"
+        else:
+            rate_text = "Checking..."
+            rate_sub = "Connecting to GitHub..."
 
-        ollama_ok = self.ollama.is_available()
-        engine_str = "Ollama Active" if ollama_ok else "Heuristic Engine"
-        engine_col = "#10B981" if ollama_ok else "#F59E0B"
-        
         kpis = [
-            ("📁 Cloned Projects", str(cloned_count), "In local license folders"),
-            ("⚖️ Active License Buckets", str(active_folders), "Organized by SPDX"),
-            ("🌐 GitHub API Quota", rate_text, rate_sub),
-            ("🧠 Architecture AI", engine_str, "Oracle auditing active")
+            ("📁 Cloned Projects", str(cloned_count), "In local license folders", "cloned"),
+            ("⚖️ Active License Buckets", str(active_folders), "Organized by SPDX", "folders"),
+            ("🌐 GitHub API Quota", rate_text, rate_sub, "quota"),
+            ("🧠 Architecture AI", "Detecting...", "Checking engine status...", "ai")
         ]
         
-        for i, (title, val, subtitle) in enumerate(kpis):
+        for i, (title, val, subtitle, key) in enumerate(kpis):
             box = ctk.CTkFrame(self.overview_kpi_frame, corner_radius=12, fg_color=("#FFFFFF", "#151D18"), border_width=1, border_color=("#D1D9CD", "#202924"))
             box.grid(row=0, column=i, padx=5, pady=5, sticky="nsew")
             
-            ctk.CTkLabel(box, text=title, font=ctk.CTkFont(family="Inter", size=11, weight="bold"), text_color=("gray50", "gray65")).pack(anchor="w", padx=15, pady=(12, 2))
-            ctk.CTkLabel(box, text=val, font=ctk.CTkFont(family="Inter", size=18, weight="bold"), text_color=engine_col if i == 3 else ("#1D1D1F", "#ECF0ED")).pack(anchor="w", padx=15)
-            ctk.CTkLabel(box, text=subtitle, font=ctk.CTkFont(family="Inter", size=10), text_color=("gray40", "gray60")).pack(anchor="w", padx=15, pady=(2, 12))
+            ctk.CTkLabel(box, text=title, font=get_font(11, "bold"), text_color=("gray50", "gray65")).pack(anchor="w", padx=15, pady=(12, 2))
+            val_lbl = ctk.CTkLabel(box, text=val, font=get_font(18, "bold"), text_color=("#1D1D1F", "#ECF0ED"))
+            val_lbl.pack(anchor="w", padx=15)
+            sub_lbl = ctk.CTkLabel(box, text=subtitle, font=get_font(10), text_color=("gray40", "gray60"))
+            sub_lbl.pack(anchor="w", padx=15, pady=(2, 12))
+
+            self._kpi_labels[f"{key}_val"] = val_lbl
+            self._kpi_labels[f"{key}_sub"] = sub_lbl
+
+        # Fire non-blocking asynchronous update in daemon thread
+        self._async_update_kpis(force=False)
+
+    def _async_update_kpis(self, force=False):
+        """Asynchronously query GitHub rate limit and Ollama status without freezing UI"""
+        def worker():
+            try:
+                rate_info = self.github.get_rate_limit_status(force_refresh=force)
+                ollama_ok = self.ollama.is_available()
+                
+                def update_ui():
+                    if not self.winfo_exists():
+                        return
+                    if "quota_val" in self._kpi_labels:
+                        rate_rem = rate_info.get("remaining", 60)
+                        rate_lim = rate_info.get("limit", 60)
+                        rate_auth = rate_info.get("authenticated", False)
+                        self._kpi_labels["quota_val"].configure(text=f"{rate_rem}/{rate_lim} req")
+                        self._kpi_labels["quota_sub"].configure(text="Authenticated PAT" if rate_auth else "Rate Guard Active")
+                    
+                    if "ai_val" in self._kpi_labels:
+                        engine_str = "Ollama Active" if ollama_ok else "Heuristic Engine"
+                        engine_col = "#10B981" if ollama_ok else "#F59E0B"
+                        self._kpi_labels["ai_val"].configure(text=engine_str, text_color=engine_col)
+                        self._kpi_labels["ai_sub"].configure(text="Oracle auditing active")
+                    
+                    if hasattr(self, "settings_auth_lbl") and self.settings_auth_lbl.winfo_exists():
+                        auth_status = "Authenticated" if rate_info.get("authenticated") else "Unauthenticated (60 req/hr)"
+                        self.settings_auth_lbl.configure(text=f"Status: {auth_status} - Quota: {rate_info.get('remaining')}/{rate_info.get('limit')}")
+
+                self.safe_after(0, update_ui)
+            except Exception as e:
+                logger.debug(f"Async KPI update error: {e}")
+
+        threading.Thread(target=worker, daemon=True).start()
 
     def _create_starter_card(self, parent, starter):
         card = ctk.CTkFrame(parent, height=80, corner_radius=10, fg_color=("#FFFFFF", "#151D18"), border_width=1, border_color=("#D1D9CD", "#202924"))
@@ -480,7 +558,7 @@ class RepoGrabberApp(ctk.CTk):
             fg_color=("#5E6C54", "#10B981"),
             hover_color=("#4F5B46", "#059669"),
             text_color="white",
-            font=ctk.CTkFont(family="Inter", size=11, weight="bold")
+            font=get_font(11, "bold")
         )
         clone_btn.configure(command=lambda s=starter, b=clone_btn: self._clone_starter_repo(s, b))
         clone_btn.pack(side="right", padx=4)
@@ -495,7 +573,7 @@ class RepoGrabberApp(ctk.CTk):
             border_width=1,
             border_color=("#5E6C54", "#10B981"),
             text_color=("#5E6C54", "#10B981"),
-            font=ctk.CTkFont(family="Inter", size=11),
+            font=get_font(11),
             command=lambda s=starter: self._preview_remote_readme(s)
         ).pack(side="right", padx=4)
         
@@ -509,7 +587,7 @@ class RepoGrabberApp(ctk.CTk):
             border_width=1,
             border_color=("#D1D5CB", "#202924"),
             text_color=("gray20", "gray85"),
-            font=ctk.CTkFont(family="Inter", size=11),
+            font=get_font(11),
             command=lambda u=starter.get("html_url"): webbrowser.open(u) if u else None
         ).pack(side="right", padx=4)
 
@@ -519,11 +597,11 @@ class RepoGrabberApp(ctk.CTk):
         top_line = ctk.CTkFrame(info, fg_color="transparent")
         top_line.pack(fill="x")
         
-        ctk.CTkLabel(top_line, text=starter["full_name"], font=ctk.CTkFont(family="Inter", size=15, weight="bold")).pack(side="left")
-        ctk.CTkLabel(top_line, text=f"  ● {starter.get('language', 'Polyglot')}  |  ★ {starter.get('stargazers_count', 0):,}  |  {starter.get('license', 'MIT')}", font=ctk.CTkFont(size=11), text_color=config.COLORS["dark"]["accent"]).pack(side="left", padx=8)
+        ctk.CTkLabel(top_line, text=starter["full_name"], font=get_font(15, "bold")).pack(side="left")
+        ctk.CTkLabel(top_line, text=f"  ● {starter.get('language', 'Polyglot')}  |  ★ {starter.get('stargazers_count', 0):,}  |  {starter.get('license', 'MIT')}", font=get_font(11), text_color=config.COLORS["dark"]["accent"]).pack(side="left", padx=8)
         
         desc = starter.get("description", "")
-        ctk.CTkLabel(info, text=desc[:110] + ("..." if len(desc) > 110 else ""), font=ctk.CTkFont(size=11), text_color=("gray40", "gray70"), anchor="w").pack(fill="x", pady=(2, 0))
+        ctk.CTkLabel(info, text=desc[:110] + ("..." if len(desc) > 110 else ""), font=get_font(11), text_color=("gray40", "gray70"), anchor="w").pack(fill="x", pady=(2, 0))
 
     def _clone_starter_repo(self, starter, button=None):
         if button:
@@ -548,7 +626,7 @@ class RepoGrabberApp(ctk.CTk):
                     if button:
                         button.configure(state="normal", text="⚡ 1-Click Clone")
                     messagebox.showerror("Clone Failed", result.get("error", "Unknown error"))
-            self.after(0, on_done)
+            self.safe_after(0, on_done)
 
         threading.Thread(target=clone, daemon=True).start()
 
@@ -558,8 +636,8 @@ class RepoGrabberApp(ctk.CTk):
         token_win.geometry("500x240")
         token_win.grid_columnconfigure(0, weight=1)
         
-        ctk.CTkLabel(token_win, text="🔑 Configure GitHub Token", font=ctk.CTkFont(family="Inter", size=18, weight="bold")).pack(pady=(20, 5))
-        ctk.CTkLabel(token_win, text="Adding a token increases rate limits from 60 to 5,000 requests/hour.", font=ctk.CTkFont(size=12), text_color=("gray50", "gray65")).pack(pady=(0, 15))
+        ctk.CTkLabel(token_win, text="🔑 Configure GitHub Token", font=get_font(18, "bold")).pack(pady=(20, 5))
+        ctk.CTkLabel(token_win, text="Adding a token increases rate limits from 60 to 5,000 requests/hour.", font=get_font(12), text_color=("gray50", "gray65")).pack(pady=(0, 15))
         
         token_entry = ctk.CTkEntry(token_win, placeholder_text="ghp_...", width=400, height=36, corner_radius=8)
         token_entry.insert(0, self.github.token)
@@ -581,6 +659,7 @@ class RepoGrabberApp(ctk.CTk):
     def _refresh_overview(self):
         self._load_repos()
         self._render_overview_kpis()
+        self._async_update_kpis(force=True)
 
     # ==========================================
     # 2. REPOSITORIES VIEW (Local & Inspected)
@@ -595,7 +674,7 @@ class RepoGrabberApp(ctk.CTk):
         ctk.CTkLabel(
             header,
             text="Local Repositories",
-            font=ctk.CTkFont(family="Inter", size=28, weight="bold")
+            font=get_font(28, "bold")
         ).pack(side="left")
         
         ctk.CTkButton(
@@ -615,7 +694,7 @@ class RepoGrabberApp(ctk.CTk):
         filter_bar = ctk.CTkFrame(view, fg_color="transparent")
         filter_bar.pack(fill="x", padx=20, pady=(5, 10))
 
-        ctk.CTkLabel(filter_bar, text="License:", font=ctk.CTkFont(size=12, weight="bold")).pack(side="left", padx=(0, 6))
+        ctk.CTkLabel(filter_bar, text="License:", font=get_font(12, "bold")).pack(side="left", padx=(0, 6))
         self.repo_license_filter = ctk.CTkComboBox(
             filter_bar,
             values=["All Licenses", "MIT", "Apache-2.0", "BSD-3-Clause", "BSD-2-Clause", "GPL-3.0", "Other"],
@@ -625,7 +704,7 @@ class RepoGrabberApp(ctk.CTk):
         self.repo_license_filter.set("All Licenses")
         self.repo_license_filter.pack(side="left")
 
-        ctk.CTkLabel(filter_bar, text="Search Local:", font=ctk.CTkFont(size=12, weight="bold")).pack(side="left", padx=(20, 6))
+        ctk.CTkLabel(filter_bar, text="Search Local:", font=get_font(12, "bold")).pack(side="left", padx=(20, 6))
         self.local_search_entry = ctk.CTkEntry(
             filter_bar,
             placeholder_text="Filter local repos by name...",
@@ -642,9 +721,16 @@ class RepoGrabberApp(ctk.CTk):
         def load():
             try:
                 self.repos = self.repo_manager.list_repos()
-                self.after(0, self._display_repos)
-                if hasattr(self, "overview_kpi_frame"):
-                    self.after(0, self._render_overview_kpis)
+                self.safe_after(0, self._display_repos)
+                if hasattr(self, "_kpi_labels") and "cloned_val" in self._kpi_labels:
+                    def update_cloned():
+                        if not self.winfo_exists(): return
+                        self._kpi_labels["cloned_val"].configure(text=str(len(self.repos)))
+                        folders_dict = self.repo_manager.get_all_license_folders()
+                        active_folders = sum(1 for f in folders_dict.values() if f.get("count", 0) > 0)
+                        if "folders_val" in self._kpi_labels:
+                            self._kpi_labels["folders_val"].configure(text=str(active_folders))
+                    self.safe_after(0, update_cloned)
             except Exception as e:
                 logger.error(f"Error loading repos: {e}")
         
@@ -661,13 +747,13 @@ class RepoGrabberApp(ctk.CTk):
             ctk.CTkLabel(
                 empty_frame,
                 text="📦 No Cloned Repositories Found Yet",
-                font=ctk.CTkFont(family="Inter", size=16, weight="bold")
+                font=get_font(16, "bold")
             ).pack(pady=(20, 5))
             
             ctk.CTkLabel(
                 empty_frame,
                 text="Get started by cloning curated starters from the Overview Hub, exploring Trending, or importing any GitHub repository.",
-                font=ctk.CTkFont(size=12),
+                font=get_font(12),
                 text_color=("gray40", "gray70")
             ).pack(pady=(0, 15))
 
@@ -712,8 +798,30 @@ class RepoGrabberApp(ctk.CTk):
             ).pack(pady=30)
             return
 
-        for repo in filtered_repos:
-            self._create_repo_card(repo)
+        # Status count banner
+        count_lbl = ctk.CTkLabel(
+            self.repo_list,
+            text=f"Showing {len(filtered_repos)} of {len(self.repos)} cloned repositories",
+            font=get_font(11),
+            text_color=("gray50", "gray65"),
+            anchor="w"
+        )
+        count_lbl.pack(fill="x", padx=10, pady=(0, 4))
+
+        self._current_render_id += 1
+        current_id = self._current_render_id
+
+        batch_size = 5
+        def render_chunk(start_idx):
+            if not self.winfo_exists() or self._current_render_id != current_id:
+                return
+            end_idx = min(start_idx + batch_size, len(filtered_repos))
+            for i in range(start_idx, end_idx):
+                self._create_repo_card(filtered_repos[i])
+            if end_idx < len(filtered_repos):
+                self.after(10, lambda: render_chunk(end_idx))
+
+        render_chunk(0)
 
     def _create_repo_card(self, repo):
         card = ctk.CTkFrame(self.repo_list, height=135, corner_radius=12, border_width=0)
@@ -737,7 +845,7 @@ class RepoGrabberApp(ctk.CTk):
             border_width=1,
             border_color=("#D1D5CB", "#202924"),
             text_color=("gray20", "gray85"),
-            font=ctk.CTkFont(family="Inter", size=11),
+            font=get_font(11),
             command=lambda r=repo: self._show_readme_modal(r)
         )
         readme_btn.pack(side="left", padx=2)
@@ -753,7 +861,7 @@ class RepoGrabberApp(ctk.CTk):
             border_width=1,
             border_color=("#D1D5CB", "#202924"),
             text_color=("gray20", "gray85"),
-            font=ctk.CTkFont(family="Inter", size=11),
+            font=get_font(11),
             command=lambda r=repo: self._show_file_tree_modal(r)
         )
         files_btn.pack(side="left", padx=2)
@@ -768,7 +876,7 @@ class RepoGrabberApp(ctk.CTk):
             fg_color=("#5E6C54", "#10B981"),
             hover_color=("#4F5B46", "#059669"),
             text_color="white",
-            font=ctk.CTkFont(family="Inter", size=11, weight="bold"),
+            font=get_font(11, "bold"),
             command=lambda r=repo: self._run_architecture_audit(r)
         )
         audit_btn.pack(side="left", padx=2)
@@ -784,7 +892,7 @@ class RepoGrabberApp(ctk.CTk):
             border_width=1,
             border_color=("#5E6C54", "#10B981"),
             text_color=("#5E6C54", "#10B981"),
-            font=ctk.CTkFont(family="Inter", size=11),
+            font=get_font(11),
             command=lambda p=repo["path"]: self._open_repo(p)
         )
         open_btn.pack(side="left", padx=2)
@@ -799,7 +907,7 @@ class RepoGrabberApp(ctk.CTk):
             fg_color=("gray90", "#202924"),
             text_color=("#1D1D1F", "#ECF0ED"),
             hover_color=("gray80", "#2D362F"),
-            font=ctk.CTkFont(family="Inter", size=11),
+            font=get_font(11),
             command=lambda p=repo["path"]: self._update_repo(p)
         )
         sync_btn.pack(side="left", padx=2)
@@ -814,7 +922,7 @@ class RepoGrabberApp(ctk.CTk):
             fg_color="transparent",
             text_color="#FF3B30",
             hover_color=("#FFE5E5", "#3D2525"),
-            font=ctk.CTkFont(family="Inter", size=13, weight="bold"),
+            font=get_font(13, "bold"),
             command=lambda p=repo["path"]: self._delete_repo(p)
         )
         del_btn.pack(side="left", padx=2)
@@ -830,7 +938,7 @@ class RepoGrabberApp(ctk.CTk):
         repo_name_lbl = ctk.CTkLabel(
             top_row,
             text=repo["name"],
-            font=ctk.CTkFont(family="Inter", size=17, weight="bold"),
+            font=get_font(17, "bold"),
             anchor="w"
         )
         repo_name_lbl.pack(side="left")
@@ -838,7 +946,7 @@ class RepoGrabberApp(ctk.CTk):
         lic_badge = ctk.CTkLabel(
             top_row,
             text=f" {repo.get('license', 'License')} ",
-            font=ctk.CTkFont(family="Inter", size=10, weight="bold"),
+            font=get_font(10, "bold"),
             fg_color=("#E8EDE6", "#1D2620"),
             text_color=("#5E6C54", "#10B981"),
             corner_radius=4
@@ -848,7 +956,7 @@ class RepoGrabberApp(ctk.CTk):
         path_lbl = ctk.CTkLabel(
             info_frame,
             text=f"📍 {repo['path']}",
-            font=ctk.CTkFont(family="Inter", size=11),
+            font=get_font(11),
             text_color=("gray50", "gray65"),
             anchor="w"
         )
@@ -858,7 +966,7 @@ class RepoGrabberApp(ctk.CTk):
             sync_lbl = ctk.CTkLabel(
                 info_frame,
                 text=f"🕒 Last synchronized: {repo['last_update'][:16]}",
-                font=ctk.CTkFont(family="Inter", size=10),
+                font=get_font(10),
                 text_color=("gray50", "gray65"),
                 anchor="w"
             )
@@ -871,7 +979,7 @@ class RepoGrabberApp(ctk.CTk):
                 t = ctk.CTkLabel(
                     tags_frame,
                     text=f" {tag} ",
-                    font=ctk.CTkFont(family="Inter", size=10, weight="bold"),
+                    font=get_font(10, "bold"),
                     fg_color=("#E8EDE6", "#1D2620"),
                     text_color=("#5E6C54", "#10B981"),
                     corner_radius=4
@@ -906,7 +1014,7 @@ class RepoGrabberApp(ctk.CTk):
         
         h = ctk.CTkFrame(modal, fg_color="transparent")
         h.grid(row=0, column=0, sticky="ew", padx=25, pady=(20, 10))
-        ctk.CTkLabel(h, text=f"📖 README: {repo['name']}", font=ctk.CTkFont(family="Inter", size=20, weight="bold")).pack(side="left")
+        ctk.CTkLabel(h, text=f"📖 README: {repo['name']}", font=get_font(20, "bold")).pack(side="left")
         
         ctk.CTkButton(
             h,
@@ -917,7 +1025,7 @@ class RepoGrabberApp(ctk.CTk):
             command=lambda: self._open_repo(repo["path"])
         ).pack(side="right")
         
-        tb = ctk.CTkTextbox(modal, font=ctk.CTkFont(family="Consolas", size=12), border_width=0,
+        tb = ctk.CTkTextbox(modal, font=get_font(12, family=CODE_FONT), border_width=0,
                             fg_color=("#FFFFFF", "#1E2621"), text_color=("#1D1D1F", "#ECF0ED"))
         tb.grid(row=1, column=0, sticky="nsew", padx=25, pady=10)
         
@@ -942,9 +1050,9 @@ class RepoGrabberApp(ctk.CTk):
         
         h = ctk.CTkFrame(modal, fg_color="transparent")
         h.grid(row=0, column=0, sticky="ew", padx=25, pady=(20, 10))
-        ctk.CTkLabel(h, text=f"📖 Remote Preview: {full_name}", font=ctk.CTkFont(family="Inter", size=20, weight="bold")).pack(side="left")
+        ctk.CTkLabel(h, text=f"📖 Remote Preview: {full_name}", font=get_font(20, "bold")).pack(side="left")
         
-        status_lbl = ctk.CTkLabel(h, text="Fetching README...", font=ctk.CTkFont(size=12), text_color="gray")
+        status_lbl = ctk.CTkLabel(h, text="Fetching README...", font=get_font(12), text_color="gray")
         status_lbl.pack(side="left", padx=15)
         
         clone_btn = ctk.CTkButton(
@@ -960,7 +1068,7 @@ class RepoGrabberApp(ctk.CTk):
         )
         clone_btn.pack(side="right")
         
-        tb = ctk.CTkTextbox(modal, font=ctk.CTkFont(family="Consolas", size=12), border_width=0,
+        tb = ctk.CTkTextbox(modal, font=get_font(12, family=CODE_FONT), border_width=0,
                             fg_color=("#FFFFFF", "#1E2621"), text_color=("#1D1D1F", "#ECF0ED"))
         tb.grid(row=1, column=0, sticky="nsew", padx=25, pady=10)
         
@@ -972,7 +1080,7 @@ class RepoGrabberApp(ctk.CTk):
             content = self.github.get_remote_readme(full_name)
             if not content:
                 content = f"# {full_name}\n\nNo README could be retrieved from GitHub API (or rate limit reached).\n\nDescription: {repo.get('description', 'N/A')}\n\nClick 'Clone Repository' to download the source code."
-            self.after(0, lambda: self._populate_remote_readme(tb, status_lbl, content))
+            self.safe_after(0, lambda: self._populate_remote_readme(tb, status_lbl, content))
 
         threading.Thread(target=fetch, daemon=True).start()
 
@@ -995,8 +1103,8 @@ class RepoGrabberApp(ctk.CTk):
         
         title_box = ctk.CTkFrame(h, fg_color="transparent")
         title_box.pack(side="left")
-        ctk.CTkLabel(title_box, text=f"🌳 Project Inspector: {repo['name']}", font=ctk.CTkFont(family="Inter", size=20, weight="bold")).pack(anchor="w")
-        ctk.CTkLabel(title_box, text=f"Total files: {stats['file_count']}  |  Size: {stats['size_mb']} MB  |  Path: {repo['path']}", font=ctk.CTkFont(size=12), text_color=("gray50", "gray65")).pack(anchor="w")
+        ctk.CTkLabel(title_box, text=f"🌳 Project Inspector: {repo['name']}", font=get_font(20, "bold")).pack(anchor="w")
+        ctk.CTkLabel(title_box, text=f"Total files: {stats['file_count']}  |  Size: {stats['size_mb']} MB  |  Path: {repo['path']}", font=get_font(12), text_color=("gray50", "gray65")).pack(anchor="w")
         
         btn_box = ctk.CTkFrame(h, fg_color="transparent")
         btn_box.pack(side="right")
@@ -1033,8 +1141,8 @@ class RepoGrabberApp(ctk.CTk):
         left_box.grid_columnconfigure(0, weight=1)
         left_box.grid_rowconfigure(1, weight=1)
 
-        ctk.CTkLabel(left_box, text="Project Topology & Hierarchy", font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, column=0, sticky="w", padx=15, pady=(10, 4))
-        tree_txt = ctk.CTkTextbox(left_box, font=ctk.CTkFont(family="Consolas", size=11), border_width=0,
+        ctk.CTkLabel(left_box, text="Project Topology & Hierarchy", font=get_font(12, "bold")).grid(row=0, column=0, sticky="w", padx=15, pady=(10, 4))
+        tree_txt = ctk.CTkTextbox(left_box, font=get_font(11, family=CODE_FONT), border_width=0,
                                   fg_color="transparent", text_color=("#1D1D1F", "#ECF0ED"))
         tree_txt.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
         tree_lines = self.repo_manager.get_repo_file_tree(repo["path"])
@@ -1046,7 +1154,7 @@ class RepoGrabberApp(ctk.CTk):
         right_box.grid_columnconfigure(0, weight=1)
         right_box.grid_rowconfigure(2, weight=1)
 
-        ctk.CTkLabel(right_box, text="Instant File Inspector", font=ctk.CTkFont(size=12, weight="bold")).grid(row=0, column=0, sticky="w", padx=15, pady=(10, 4))
+        ctk.CTkLabel(right_box, text="Instant File Inspector", font=get_font(12, "bold")).grid(row=0, column=0, sticky="w", padx=15, pady=(10, 4))
         
         file_pick_row = ctk.CTkFrame(right_box, fg_color="transparent")
         file_pick_row.grid(row=1, column=0, sticky="ew", padx=10, pady=(0, 6))
@@ -1054,7 +1162,7 @@ class RepoGrabberApp(ctk.CTk):
         file_entry = ctk.CTkEntry(file_pick_row, placeholder_text="e.g. package.json or main.py", height=30)
         file_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
 
-        preview_txt = ctk.CTkTextbox(right_box, font=ctk.CTkFont(family="Consolas", size=11), border_width=0,
+        preview_txt = ctk.CTkTextbox(right_box, font=get_font(11, family=CODE_FONT), border_width=0,
                                      fg_color=("#F5F7F3", "#151D18"), text_color=("#1D1D1F", "#ECF0ED"))
         preview_txt.grid(row=2, column=0, sticky="nsew", padx=10, pady=(0, 10))
         preview_txt.insert("1.0", "# Enter any relative file path to view its contents directly.")
@@ -1096,13 +1204,13 @@ class RepoGrabberApp(ctk.CTk):
         ctk.CTkLabel(
             header,
             text="🌱 OSS Launchpad & Contributor Suite",
-            font=ctk.CTkFont(family="Inter", size=26, weight="bold")
+            font=get_font(26, "bold")
         ).pack(anchor="w")
         
         ctk.CTkLabel(
             header,
             text="Everything you need to discover beginner-friendly issues, master open-source licenses, and make your first PR.",
-            font=ctk.CTkFont(family="Inter", size=13),
+            font=get_font(13),
             text_color=("gray50", "gray65")
         ).pack(anchor="w", pady=(2, 10))
 
@@ -1125,7 +1233,7 @@ class RepoGrabberApp(ctk.CTk):
                 corner_radius=8,
                 fg_color=("#5E6C54", "#10B981") if key == "issues" else "transparent",
                 text_color="white" if key == "issues" else ("gray20", "gray85"),
-                font=ctk.CTkFont(family="Inter", size=12, weight="bold"),
+                font=get_font(12, "bold"),
                 command=lambda k=key: self._switch_learner_tab(k)
             )
             btn.pack(side="left", padx=(0, 8))
@@ -1160,7 +1268,7 @@ class RepoGrabberApp(ctk.CTk):
         ctrl = ctk.CTkFrame(frame, fg_color="transparent")
         ctrl.pack(fill="x", pady=(0, 10))
         
-        ctk.CTkLabel(ctrl, text="Filter Language:", font=ctk.CTkFont(size=12, weight="bold")).pack(side="left", padx=(0, 8))
+        ctk.CTkLabel(ctrl, text="Filter Language:", font=get_font(12, "bold")).pack(side="left", padx=(0, 8))
         self.learner_lang_filter = ctk.CTkComboBox(
             ctrl,
             values=["All", "Python", "TypeScript", "JavaScript", "Rust", "Go"],
@@ -1178,26 +1286,46 @@ class RepoGrabberApp(ctk.CTk):
             fg_color=("#5E6C54", "#10B981"),
             hover_color=("#4F5B46", "#059669"),
             text_color="white",
-            font=ctk.CTkFont(family="Inter", size=12, weight="bold"),
-            command=self._load_good_first_issues
+            font=get_font(12, "bold"),
+            command=lambda: self._load_good_first_issues(force_refresh=True)
         ).pack(side="left", padx=10)
         
         self.issues_list_frame = ctk.CTkFrame(frame, fg_color="transparent")
         self.issues_list_frame.pack(fill="both", expand=True)
         
-        self._load_good_first_issues()
+        # Lazy loading placeholder - only loads when tab is opened or button clicked
+        ctk.CTkLabel(
+            self.issues_list_frame,
+            text="🌟 Select a language and click 'Find Beginner Opportunities' to discover projects with 'good first issue' labels.",
+            font=get_font(13),
+            text_color=("gray40", "gray70")
+        ).pack(pady=40)
 
-    def _load_good_first_issues(self):
+    def _load_good_first_issues(self, force_refresh=False):
+        lang = getattr(self, "learner_lang_filter", None)
+        selected_lang = lang.get() if lang else "All"
+        cache_key = selected_lang
+
+        if not force_refresh and cache_key in self._issues_cache:
+            self._display_good_first_issues(self._issues_cache[cache_key])
+            return
+
         for w in self.issues_list_frame.winfo_children():
             w.destroy()
             
-        ctk.CTkLabel(self.issues_list_frame, text="Searching for beginner-friendly repositories...", text_color="gray").pack(pady=20)
-        lang = getattr(self, "learner_lang_filter", None)
-        selected_lang = lang.get() if lang else "All"
+        loading_box = ctk.CTkFrame(self.issues_list_frame, fg_color="transparent")
+        loading_box.pack(pady=40)
+        ctk.CTkLabel(
+            loading_box,
+            text=f"Searching for beginner-friendly {selected_lang if selected_lang != 'All' else 'open source'} repositories...",
+            font=get_font(13),
+            text_color=("gray40", "gray70")
+        ).pack()
         
         def run():
             results = self.github.search_good_first_issues(language=selected_lang)
-            self.after(0, lambda: self._display_good_first_issues(results))
+            self._issues_cache[cache_key] = results
+            self.safe_after(0, lambda: self._display_good_first_issues(results))
             
         threading.Thread(target=run, daemon=True).start()
 
@@ -1209,73 +1337,89 @@ class RepoGrabberApp(ctk.CTk):
             ctk.CTkLabel(self.issues_list_frame, text="No repositories found.", text_color="gray").pack(pady=20)
             return
             
-        for repo in repos:
-            card = ctk.CTkFrame(self.issues_list_frame, height=110, corner_radius=12, fg_color=("#FFFFFF", "#151D18"), border_width=1, border_color=("#D1D9CD", "#202924"))
-            card.pack(fill="x", pady=6)
-            card.grid_propagate(False)
-            
-            info = ctk.CTkFrame(card, fg_color="transparent")
-            info.pack(side="left", fill="both", expand=True, padx=20, pady=12)
-            
-            t = ctk.CTkFrame(info, fg_color="transparent")
-            t.pack(fill="x")
-            
-            ctk.CTkLabel(t, text=repo["full_name"], font=ctk.CTkFont(family="Inter", size=16, weight="bold")).pack(side="left")
-            ctk.CTkLabel(t, text=f"  ● {repo.get('language', 'Polyglot')}  |  ★ {repo.get('stargazers_count', 0):,}", font=ctk.CTkFont(size=11), text_color=config.COLORS["dark"]["accent"]).pack(side="left", padx=8)
-            
-            gfi_badge = ctk.CTkLabel(
-                t,
-                text=" 🌟 Good First Issues Available ",
-                font=ctk.CTkFont(family="Inter", size=10, weight="bold"),
-                fg_color=("#E8EDE6", "#1D2620"),
-                text_color=("#10B981", "#34D399"),
-                corner_radius=4
-            )
-            gfi_badge.pack(side="left", padx=5)
-            
-            desc = repo.get("description", "") or "No description provided."
-            ctk.CTkLabel(info, text=desc[:120] + ("..." if len(desc) > 120 else ""), font=ctk.CTkFont(size=11), text_color=("gray40", "gray70"), anchor="w").pack(fill="x", pady=(2, 0))
-            
-            actions = ctk.CTkFrame(card, fg_color="transparent")
-            actions.pack(side="right", fill="y", padx=15)
-            
-            top_btns = ctk.CTkFrame(actions, fg_color="transparent")
-            top_btns.pack(side="top", pady=(14, 4))
+        self._current_render_id += 1
+        current_id = self._current_render_id
+        
+        batch_size = 5
+        def render_chunk(start_idx):
+            if not self.winfo_exists() or self._current_render_id != current_id:
+                return
+            end_idx = min(start_idx + batch_size, len(repos))
+            for i in range(start_idx, end_idx):
+                self._render_single_issue_card(repos[i])
+            if end_idx < len(repos):
+                self.after(10, lambda: render_chunk(end_idx))
 
-            ctk.CTkButton(
-                top_btns,
-                text="👁️ Readme",
-                width=75,
-                height=30,
-                corner_radius=6,
-                fg_color="transparent",
-                border_width=1,
-                border_color=("#5E6C54", "#10B981"),
-                text_color=("#5E6C54", "#10B981"),
-                font=ctk.CTkFont(size=11),
-                command=lambda r=repo: self._preview_remote_readme(r)
-            ).pack(side="left", padx=3)
+        render_chunk(0)
 
-            ctk.CTkButton(
-                top_btns,
-                text="Issues on GitHub",
-                width=110,
-                height=30,
-                corner_radius=6,
-                command=lambda u=f"{repo.get('html_url')}/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22": webbrowser.open(u)
-            ).pack(side="left", padx=3)
-            
-            ctk.CTkButton(
-                actions,
-                text="Clone & Setup",
-                width=190,
-                height=32,
-                corner_radius=8,
-                fg_color=("#5E6C54", "#10B981"),
-                hover_color=("#4F5B46", "#059669"),
-                text_color="white",
-                command=lambda r=repo: self._clone_from_search(r)
-            ).pack(side="top")
+    def _render_single_issue_card(self, repo):
+        card = ctk.CTkFrame(self.issues_list_frame, height=110, corner_radius=12, fg_color=("#FFFFFF", "#151D18"), border_width=1, border_color=("#D1D9CD", "#202924"))
+        card.pack(fill="x", pady=6)
+        card.grid_propagate(False)
+        
+        info = ctk.CTkFrame(card, fg_color="transparent")
+        info.pack(side="left", fill="both", expand=True, padx=20, pady=12)
+        
+        t = ctk.CTkFrame(info, fg_color="transparent")
+        t.pack(fill="x")
+        
+        ctk.CTkLabel(t, text=repo["full_name"], font=get_font(16, "bold")).pack(side="left")
+        ctk.CTkLabel(t, text=f"  ● {repo.get('language', 'Polyglot')}  |  ★ {repo.get('stargazers_count', 0):,}", font=get_font(11), text_color=config.COLORS["dark"]["accent"]).pack(side="left", padx=8)
+        
+        gfi_badge = ctk.CTkLabel(
+            t,
+            text=" 🌟 Good First Issues Available ",
+            font=get_font(10, "bold"),
+            fg_color=("#E8EDE6", "#1D2620"),
+            text_color=("#10B981", "#34D399"),
+            corner_radius=4
+        )
+        gfi_badge.pack(side="left", padx=5)
+        
+        desc = repo.get("description", "") or "No description provided."
+        ctk.CTkLabel(info, text=desc[:120] + ("..." if len(desc) > 120 else ""), font=get_font(11), text_color=("gray40", "gray70"), anchor="w").pack(fill="x", pady=(2, 0))
+        
+        actions = ctk.CTkFrame(card, fg_color="transparent")
+        actions.pack(side="right", fill="y", padx=15)
+        
+        top_btns = ctk.CTkFrame(actions, fg_color="transparent")
+        top_btns.pack(side="top", pady=(14, 4))
+
+        ctk.CTkButton(
+            top_btns,
+            text="👁️ Readme",
+            width=75,
+            height=30,
+            corner_radius=6,
+            fg_color="transparent",
+            border_width=1,
+            border_color=("#5E6C54", "#10B981"),
+            text_color=("#5E6C54", "#10B981"),
+            font=get_font(11),
+            command=lambda r=repo: self._preview_remote_readme(r)
+        ).pack(side="left", padx=3)
+
+        ctk.CTkButton(
+            top_btns,
+            text="Issues on GitHub",
+            width=110,
+            height=30,
+            corner_radius=6,
+            command=lambda u=f"{repo.get('html_url')}/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22": webbrowser.open(u)
+        ).pack(side="left", padx=3)
+        
+        clone_btn = ctk.CTkButton(
+            actions,
+            text="⚡ Clone & Setup",
+            width=190,
+            height=32,
+            corner_radius=8,
+            fg_color=("#5E6C54", "#10B981"),
+            hover_color=("#4F5B46", "#059669"),
+            text_color="white"
+        )
+        clone_btn.configure(command=lambda r=repo, b=clone_btn: self._async_clone_from_search(r, b))
+        clone_btn.pack(side="top")
 
     def _build_license_decoder_tab(self):
         frame = ctk.CTkFrame(self.learner_container, fg_color="transparent")
@@ -1284,13 +1428,13 @@ class RepoGrabberApp(ctk.CTk):
         ctk.CTkLabel(
             frame,
             text="Interactive Open-Source License Decoder",
-            font=ctk.CTkFont(family="Inter", size=18, weight="bold")
+            font=get_font(18, "bold")
         ).pack(anchor="w", pady=(0, 6))
         
         ctk.CTkLabel(
             frame,
             text="Select any license to inspect permissions, commercial rights, patent grants, and copyleft obligations.",
-            font=ctk.CTkFont(size=12),
+            font=get_font(12),
             text_color=("gray50", "gray65")
         ).pack(anchor="w", pady=(0, 15))
         
@@ -1318,7 +1462,7 @@ class RepoGrabberApp(ctk.CTk):
         # Quick Decision Guide
         quiz_box = ctk.CTkFrame(frame, corner_radius=12, fg_color=("#FFFFFF", "#151D18"), border_width=1, border_color=("#D1D9CD", "#202924"))
         quiz_box.pack(fill="x", pady=(15, 5))
-        ctk.CTkLabel(quiz_box, text="🎯 What License Should I Choose for My Project?", font=ctk.CTkFont(family="Inter", size=14, weight="bold"), text_color=("#2C342C", "#10B981")).pack(anchor="w", padx=20, pady=(12, 6))
+        ctk.CTkLabel(quiz_box, text="🎯 What License Should I Choose for My Project?", font=get_font(14, "bold"), text_color=("#2C342C", "#10B981")).pack(anchor="w", padx=20, pady=(12, 6))
 
         quiz_rules = [
             ("I want maximum adoption with zero restrictions:", "Choose MIT (Short, simple, permissive)"),
@@ -1331,8 +1475,8 @@ class RepoGrabberApp(ctk.CTk):
         for q, a in quiz_rules:
             r = ctk.CTkFrame(quiz_box, fg_color="transparent")
             r.pack(fill="x", padx=20, pady=2)
-            ctk.CTkLabel(r, text=f"• {q}", font=ctk.CTkFont(size=11, weight="bold"), width=360, anchor="w").pack(side="left")
-            ctk.CTkLabel(r, text=f"➜ {a}", font=ctk.CTkFont(size=11), text_color=config.COLORS["dark"]["accent"], anchor="w").pack(side="left")
+            ctk.CTkLabel(r, text=f"• {q}", font=get_font(11, "bold"), width=360, anchor="w").pack(side="left")
+            ctk.CTkLabel(r, text=f"➜ {a}", font=get_font(11), text_color=config.COLORS["dark"]["accent"], anchor="w").pack(side="left")
         ctk.CTkLabel(quiz_box, text="", height=6).pack()
 
     def _display_license_info(self, lic_key):
@@ -1348,26 +1492,26 @@ class RepoGrabberApp(ctk.CTk):
         top = ctk.CTkFrame(pad, fg_color="transparent")
         top.pack(fill="x", pady=(0, 10))
         
-        ctk.CTkLabel(top, text=data["name"], font=ctk.CTkFont(family="Inter", size=20, weight="bold")).pack(side="left")
+        ctk.CTkLabel(top, text=data["name"], font=get_font(20, "bold")).pack(side="left")
         
         badge_col = "#10B981" if not data.get("copyleft") else "#F59E0B"
         ctk.CTkLabel(
             top,
             text=f"  {data['badge']}  ",
-            font=ctk.CTkFont(family="Inter", size=11, weight="bold"),
+            font=get_font(11, "bold"),
             fg_color=("#E8EDE6", "#1D2620"),
             text_color=badge_col,
             corner_radius=4
         ).pack(side="left", padx=12)
         
-        ctk.CTkLabel(pad, text="Plain-English Summary:", font=ctk.CTkFont(family="Inter", size=13, weight="bold")).pack(anchor="w", pady=(10, 2))
-        ctk.CTkLabel(pad, text=data["summary"], font=ctk.CTkFont(size=12), wraplength=700, justify="left", text_color=("gray30", "gray80")).pack(anchor="w", pady=(0, 10))
+        ctk.CTkLabel(pad, text="Plain-English Summary:", font=get_font(13, "bold")).pack(anchor="w", pady=(10, 2))
+        ctk.CTkLabel(pad, text=data["summary"], font=get_font(12), wraplength=700, justify="left", text_color=("gray30", "gray80")).pack(anchor="w", pady=(0, 10))
         
-        ctk.CTkLabel(pad, text="Core Obligations:", font=ctk.CTkFont(family="Inter", size=13, weight="bold")).pack(anchor="w", pady=(5, 2))
-        ctk.CTkLabel(pad, text=f"• {data['obligations']}", font=ctk.CTkFont(size=12), wraplength=700, justify="left", text_color=("gray30", "gray80")).pack(anchor="w", pady=(0, 10))
+        ctk.CTkLabel(pad, text="Core Obligations:", font=get_font(13, "bold")).pack(anchor="w", pady=(5, 2))
+        ctk.CTkLabel(pad, text=f"• {data['obligations']}", font=get_font(12), wraplength=700, justify="left", text_color=("gray30", "gray80")).pack(anchor="w", pady=(0, 10))
         
-        ctk.CTkLabel(pad, text="Recommended Use Case:", font=ctk.CTkFont(family="Inter", size=13, weight="bold")).pack(anchor="w", pady=(5, 2))
-        ctk.CTkLabel(pad, text=f"• {data['ideal_for']}", font=ctk.CTkFont(size=12), wraplength=700, justify="left", text_color=config.COLORS["dark"]["accent"]).pack(anchor="w")
+        ctk.CTkLabel(pad, text="Recommended Use Case:", font=get_font(13, "bold")).pack(anchor="w", pady=(5, 2))
+        ctk.CTkLabel(pad, text=f"• {data['ideal_for']}", font=get_font(12), wraplength=700, justify="left", text_color=config.COLORS["dark"]["accent"]).pack(anchor="w")
 
     def _build_pr_guide_tab(self):
         frame = ctk.CTkFrame(self.learner_container, fg_color="transparent")
@@ -1379,13 +1523,13 @@ class RepoGrabberApp(ctk.CTk):
         ctk.CTkLabel(
             top_bar,
             text="🚀 First Pull Request Workflow & Git Cheatsheet",
-            font=ctk.CTkFont(family="Inter", size=18, weight="bold")
+            font=get_font(18, "bold")
         ).pack(side="left")
 
         self.pr_progress_label = ctk.CTkLabel(
             top_bar,
             text="Progress: 0/20 Steps Completed (0%)",
-            font=ctk.CTkFont(family="Inter", size=12, weight="bold"),
+            font=get_font(12, "bold"),
             text_color=config.COLORS["dark"]["accent"]
         )
         self.pr_progress_label.pack(side="right")
@@ -1396,12 +1540,12 @@ class RepoGrabberApp(ctk.CTk):
             card = ctk.CTkFrame(frame, corner_radius=10, fg_color=("#FFFFFF", "#151D18"), border_width=1, border_color=("#D1D9CD", "#202924"))
             card.pack(fill="x", pady=5)
             
-            ctk.CTkLabel(card, text=item["phase"], font=ctk.CTkFont(family="Inter", size=14, weight="bold"), text_color=("#2C342C", "#10B981")).pack(anchor="w", padx=15, pady=(10, 4))
+            ctk.CTkLabel(card, text=item["phase"], font=get_font(14, "bold"), text_color=("#2C342C", "#10B981")).pack(anchor="w", padx=15, pady=(10, 4))
             for step in item["steps"]:
                 cb = ctk.CTkCheckBox(
                     card,
                     text=f" {step}",
-                    font=ctk.CTkFont(size=11),
+                    font=get_font(11),
                     text_color=("gray30", "gray80"),
                     command=self._update_pr_progress
                 )
@@ -1412,12 +1556,12 @@ class RepoGrabberApp(ctk.CTk):
         git_box = ctk.CTkFrame(frame, corner_radius=10, fg_color=("#FFFFFF", "#151D18"), border_width=1, border_color=("#D1D9CD", "#202924"))
         git_box.pack(fill="x", pady=10)
         
-        ctk.CTkLabel(git_box, text="⚡ Essential Git Commands", font=ctk.CTkFont(family="Inter", size=14, weight="bold"), text_color=("#2C342C", "#10B981")).pack(anchor="w", padx=15, pady=(10, 6))
+        ctk.CTkLabel(git_box, text="⚡ Essential Git Commands", font=get_font(14, "bold"), text_color=("#2C342C", "#10B981")).pack(anchor="w", padx=15, pady=(10, 6))
         for g in GIT_ESSENTIALS[:6]:
             row = ctk.CTkFrame(git_box, fg_color="transparent")
             row.pack(fill="x", padx=15, pady=2)
-            ctk.CTkLabel(row, text=g["command"], font=ctk.CTkFont(family="Consolas", size=11, weight="bold"), width=240, anchor="w").pack(side="left")
-            ctk.CTkLabel(row, text=f"- {g['description']}", font=ctk.CTkFont(size=11), text_color=("gray40", "gray70"), anchor="w").pack(side="left")
+            ctk.CTkLabel(row, text=g["command"], font=get_font(11, "bold", family=CODE_FONT), width=240, anchor="w").pack(side="left")
+            ctk.CTkLabel(row, text=f"- {g['description']}", font=get_font(11), text_color=("gray40", "gray70"), anchor="w").pack(side="left")
         ctk.CTkLabel(git_box, text="", height=6).pack()
 
     def _update_pr_progress(self):
@@ -1441,7 +1585,7 @@ class RepoGrabberApp(ctk.CTk):
         ctk.CTkLabel(
             header,
             text="GitHub Trending",
-            font=ctk.CTkFont(size=18, weight="bold")
+            font=get_font(18, "bold")
         ).pack(side="left")
         
         ctk.CTkButton(
@@ -1454,7 +1598,7 @@ class RepoGrabberApp(ctk.CTk):
             border_width=1,
             border_color=("#5E6C54", "#10B981"),
             text_color=("#5E6C54", "#10B981"),
-            font=ctk.CTkFont(family="Inter", weight="bold"),
+            font=get_font(12, "bold"),
             command=lambda: webbrowser.open("https://github.com/trending/")
         ).pack(side="right")
         
@@ -1467,8 +1611,8 @@ class RepoGrabberApp(ctk.CTk):
             fg_color=("#5E6C54", "#10B981"),
             hover_color=("#4F5B46", "#059669"),
             text_color="white",
-            font=ctk.CTkFont(family="Inter", weight="bold"),
-            command=self._load_trending
+            font=get_font(12, "bold"),
+            command=lambda: self._load_trending(force_refresh=True)
         ).pack(side="right", padx=10)
         
         filter_frame = ctk.CTkFrame(view, fg_color="transparent")
@@ -1479,7 +1623,7 @@ class RepoGrabberApp(ctk.CTk):
         self.trending_lang = ctk.CTkComboBox(
             filter_frame,
             values=["All", "Python", "JavaScript", "TypeScript", "Java", "Go", "Rust", "C++", "C#"],
-            command=lambda x: self._load_trending()
+            command=lambda x: self._load_trending(force_refresh=False)
         )
         self.trending_lang.set("All")
         self.trending_lang.pack(side="left", padx=5)
@@ -1487,28 +1631,43 @@ class RepoGrabberApp(ctk.CTk):
         self.trending_list = ctk.CTkFrame(view, fg_color="transparent")
         self.trending_list.pack(fill="both", expand=True, padx=20, pady=10)
         
-        self._load_trending()
+        # Lazy loading placeholder - only loads when tab is navigated to or refreshed
+        ctk.CTkLabel(
+            self.trending_list,
+            text="🔥 Select a language above or click Refresh to discover trending repositories.",
+            font=get_font(13),
+            text_color=("gray40", "gray70")
+        ).pack(pady=40)
 
-    def _load_trending(self):
+    def _load_trending(self, force_refresh=False):
+        lang = self.trending_lang.get()
+        language = "" if lang == "All" else lang
+        cache_key = language or "all"
+
+        if not force_refresh and cache_key in self._trending_cache:
+            self._display_trending(self._trending_cache[cache_key])
+            return
+
         for widget in self.trending_list.winfo_children():
             widget.destroy()
         
+        loading_box = ctk.CTkFrame(self.trending_list, fg_color="transparent")
+        loading_box.pack(pady=40)
         ctk.CTkLabel(
-            self.trending_list,
-            text="Loading trending repos...",
-            text_color="gray"
-        ).pack(pady=20)
-        
-        lang = self.trending_lang.get()
-        language = "" if lang == "All" else lang
+            loading_box,
+            text=f"Loading trending {language or 'open source'} repositories...",
+            font=get_font(13),
+            text_color=("gray40", "gray70")
+        ).pack()
         
         def load():
             try:
                 repos = self.github.search_trending_repos(language=language)
-                self.after(0, lambda: self._display_trending(repos))
+                self._trending_cache[cache_key] = repos
+                self.safe_after(0, lambda: self._display_trending(repos))
             except Exception as err:
                 err_msg = str(err)
-                self.after(0, lambda m=err_msg: self._trending_error(m))
+                self.safe_after(0, lambda m=err_msg: self._trending_error(m))
         
         threading.Thread(target=load, daemon=True).start()
 
@@ -1526,95 +1685,110 @@ class RepoGrabberApp(ctk.CTk):
             ).pack(pady=40)
             return
         
-        for repo in repos:
-            card = ctk.CTkFrame(self.trending_list, height=135, corner_radius=12)
-            card.pack(fill="x", pady=6, padx=5)
-            card.pack_propagate(False)
-            
-            # Action buttons packed on RIGHT first to prevent any clipping
-            btn_frame = ctk.CTkFrame(card, fg_color="transparent", border_width=0)
-            btn_frame.pack(side="right", fill="y", padx=15)
-            
-            inner_action = ctk.CTkFrame(btn_frame, fg_color="transparent")
-            inner_action.pack(expand=True)
+        self._current_render_id += 1
+        current_id = self._current_render_id
+        
+        batch_size = 5
+        def render_chunk(start_idx):
+            if not self.winfo_exists() or self._current_render_id != current_id:
+                return
+            end_idx = min(start_idx + batch_size, len(repos))
+            for i in range(start_idx, end_idx):
+                self._render_single_trending_card(repos[i])
+            if end_idx < len(repos):
+                self.after(10, lambda: render_chunk(end_idx))
 
-            ctk.CTkButton(
-                inner_action,
-                text="🌐 GitHub",
-                width=75,
-                height=32,
-                corner_radius=8,
-                fg_color="transparent",
-                border_width=1,
-                border_color=("#D1D5CB", "#2D3730"),
-                text_color=("gray20", "gray85"),
-                font=ctk.CTkFont(family="Inter", size=11),
-                command=lambda u=repo.get("html_url"): webbrowser.open(u) if u else None
-            ).pack(side="left", padx=3)
+        render_chunk(0)
 
-            ctk.CTkButton(
-                inner_action,
-                text="👁️ Readme",
-                width=75,
-                height=32,
-                corner_radius=8,
-                fg_color="transparent",
-                border_width=1,
-                border_color=("#5E6C54", "#10B981"),
-                text_color=("#5E6C54", "#10B981"),
-                font=ctk.CTkFont(family="Inter", size=11, weight="bold"),
-                command=lambda r=repo: self._preview_remote_readme(r)
-            ).pack(side="left", padx=3)
+    def _render_single_trending_card(self, repo):
+        card = ctk.CTkFrame(self.trending_list, height=135, corner_radius=12)
+        card.pack(fill="x", pady=6, padx=5)
+        card.pack_propagate(False)
+        
+        # Action buttons packed on RIGHT first to prevent any clipping
+        btn_frame = ctk.CTkFrame(card, fg_color="transparent", border_width=0)
+        btn_frame.pack(side="right", fill="y", padx=15)
+        
+        inner_action = ctk.CTkFrame(btn_frame, fg_color="transparent")
+        inner_action.pack(expand=True)
 
-            clone_btn = ctk.CTkButton(
-                inner_action,
-                text="⚡ Clone",
-                width=75,
-                height=32,
-                corner_radius=8,
-                fg_color=("#5E6C54", "#10B981"),
-                hover_color=("#4F5B46", "#059669"),
-                text_color="white",
-                font=ctk.CTkFont(family="Inter", size=11, weight="bold")
-            )
-            clone_btn.configure(command=lambda r=repo, b=clone_btn: self._async_clone_from_search(r, b))
-            clone_btn.pack(side="left", padx=3)
+        ctk.CTkButton(
+            inner_action,
+            text="🌐 GitHub",
+            width=75,
+            height=32,
+            corner_radius=8,
+            fg_color="transparent",
+            border_width=1,
+            border_color=("#D1D5CB", "#2D3730"),
+            text_color=("gray20", "gray85"),
+            font=get_font(11),
+            command=lambda u=repo.get("html_url"): webbrowser.open(u) if u else None
+        ).pack(side="left", padx=3)
 
-            # Info frame packed on LEFT second
-            info_frame = ctk.CTkFrame(card, fg_color="transparent", border_width=0)
-            info_frame.pack(side="left", fill="both", expand=True, padx=20, pady=12)
-            
-            ctk.CTkLabel(
-                info_frame,
-                text=repo['full_name'],
-                font=ctk.CTkFont(family="Inter", size=16, weight="bold"),
-                anchor="w"
-            ).pack(fill="x")
-            
-            desc = repo.get("description") or "No description provided."
-            ctk.CTkLabel(
-                info_frame,
-                text=desc[:115] + "..." if len(desc) > 115 else desc,
-                font=ctk.CTkFont(family="Inter", size=11),
-                text_color=("gray40", "gray70"),
-                anchor="w",
-                justify="left",
-                wraplength=550
-            ).pack(fill="x", pady=4)
-            
-            stats_text = f"★ {repo.get('stargazers_count', 0):,}   ⑂ {repo.get('forks_count', 0):,}"
-            if repo.get("language"):
-                stats_text += f"   ● {repo['language']}"
-            if repo.get("license"):
-                stats_text += f"   ⚖️ {repo['license']}"
-            
-            ctk.CTkLabel(
-                info_frame,
-                text=stats_text,
-                font=ctk.CTkFont(family="Inter", size=11),
-                text_color=config.COLORS["dark"]["accent"],
-                anchor="w"
-            ).pack(fill="x")
+        ctk.CTkButton(
+            inner_action,
+            text="👁️ Readme",
+            width=75,
+            height=32,
+            corner_radius=8,
+            fg_color="transparent",
+            border_width=1,
+            border_color=("#5E6C54", "#10B981"),
+            text_color=("#5E6C54", "#10B981"),
+            font=get_font(11, "bold"),
+            command=lambda r=repo: self._preview_remote_readme(r)
+        ).pack(side="left", padx=3)
+
+        clone_btn = ctk.CTkButton(
+            inner_action,
+            text="⚡ Clone",
+            width=75,
+            height=32,
+            corner_radius=8,
+            fg_color=("#5E6C54", "#10B981"),
+            hover_color=("#4F5B46", "#059669"),
+            text_color="white",
+            font=get_font(11, "bold")
+        )
+        clone_btn.configure(command=lambda r=repo, b=clone_btn: self._async_clone_from_search(r, b))
+        clone_btn.pack(side="left", padx=3)
+
+        # Info frame packed on LEFT second
+        info_frame = ctk.CTkFrame(card, fg_color="transparent", border_width=0)
+        info_frame.pack(side="left", fill="both", expand=True, padx=20, pady=12)
+        
+        ctk.CTkLabel(
+            info_frame,
+            text=repo['full_name'],
+            font=get_font(16, "bold"),
+            anchor="w"
+        ).pack(fill="x")
+        
+        desc = repo.get("description") or "No description provided."
+        ctk.CTkLabel(
+            info_frame,
+            text=desc[:115] + "..." if len(desc) > 115 else desc,
+            font=get_font(11),
+            text_color=("gray40", "gray70"),
+            anchor="w",
+            justify="left",
+            wraplength=550
+        ).pack(fill="x", pady=4)
+        
+        stats_text = f"★ {repo.get('stargazers_count', 0):,}   ⑂ {repo.get('forks_count', 0):,}"
+        if repo.get("language"):
+            stats_text += f"   ● {repo['language']}"
+        if repo.get("license"):
+            stats_text += f"   ⚖️ {repo['license']}"
+        
+        ctk.CTkLabel(
+            info_frame,
+            text=stats_text,
+            font=get_font(11),
+            text_color=config.COLORS["dark"]["accent"],
+            anchor="w"
+        ).pack(fill="x")
 
     def _trending_error(self, error):
         for widget in self.trending_list.winfo_children():
@@ -1636,15 +1810,15 @@ class RepoGrabberApp(ctk.CTk):
         ctk.CTkLabel(
             view,
             text="Search GitHub Repositories",
-            font=ctk.CTkFont(size=18, weight="bold")
-        ).pack(pady=20)
+            font=get_font(20, "bold")
+        ).pack(anchor="w", padx=20, pady=(20, 10))
         
         search_frame = ctk.CTkFrame(view, fg_color="transparent", border_width=0)
-        search_frame.pack(fill="x", padx=20, pady=10)
+        search_frame.pack(fill="x", padx=20, pady=(5, 8))
         
         self.search_entry = ctk.CTkEntry(
             search_frame,
-            placeholder_text="Find repositories across 50M+ open source projects...",
+            placeholder_text="Find repositories across 50M+ open source projects (Press Enter to Search)...",
             height=44,
             corner_radius=10
         )
@@ -1656,51 +1830,106 @@ class RepoGrabberApp(ctk.CTk):
             text="Search",
             width=110,
             height=44,
-            corner_radius=12,
+            corner_radius=10,
             fg_color=("#5E6C54", "#10B981"),
             hover_color=("#4F5B46", "#059669"),
             text_color="white",
-            font=ctk.CTkFont(family="Inter", size=14, weight="bold"),
+            font=get_font(13, "bold"),
             command=self._search_repos
         ).pack(side="right")
         
-        lang_frame = ctk.CTkFrame(view, fg_color="transparent")
-        lang_frame.pack(fill="x", padx=20, pady=5)
+        # Popular topic quick filter chips for instant exploration
+        chips_frame = ctk.CTkFrame(view, fg_color="transparent")
+        chips_frame.pack(fill="x", padx=20, pady=(0, 8))
         
-        ctk.CTkLabel(lang_frame, text="Language:").pack(side="left", padx=5)
+        ctk.CTkLabel(
+            chips_frame,
+            text="Popular topics:",
+            font=get_font(11, "bold"),
+            text_color=("gray50", "gray65")
+        ).pack(side="left", padx=(0, 6))
+
+        sample_topics = [
+            ("⚡ FastAPI", "fastapi"),
+            ("⚛️ React", "react"),
+            ("🦀 Rust", "rust"),
+            ("🤖 LLM & AI", "llm agent"),
+            ("🐍 CLI Tools", "cli python"),
+            ("🐹 Go", "golang"),
+            ("🐳 Docker", "docker")
+        ]
+        for label, q in sample_topics:
+            chip = ctk.CTkButton(
+                chips_frame,
+                text=label,
+                height=26,
+                corner_radius=13,
+                fg_color=("#F0F4EE", "#1C2420"),
+                hover_color=("#E0E8DC", "#28342E"),
+                text_color=("#2C342C", "#10B981"),
+                font=get_font(11),
+                command=lambda topic=q: self._quick_topic_search(topic)
+            )
+            chip.pack(side="left", padx=3)
+
+        lang_frame = ctk.CTkFrame(view, fg_color="transparent")
+        lang_frame.pack(fill="x", padx=20, pady=(0, 5))
+        
+        ctk.CTkLabel(lang_frame, text="Language:").pack(side="left", padx=(0, 5))
         
         self.search_lang = ctk.CTkComboBox(
             lang_frame,
-            values=["", "Python", "JavaScript", "TypeScript", "Java", "Go", "Rust", "C++", "C#"]
+            values=["", "Python", "JavaScript", "TypeScript", "Java", "Go", "Rust", "C++", "C#"],
+            command=lambda x: self._search_repos(force_refresh=False)
         )
         self.search_lang.pack(side="left", padx=5)
         
         self.search_results_list = ctk.CTkFrame(view, fg_color="transparent")
         self.search_results_list.pack(fill="both", expand=True, padx=20, pady=10)
 
-    def _search_repos(self):
+        ctk.CTkLabel(
+            self.search_results_list,
+            text="Type a search query or click one of the popular topics above to explore.",
+            text_color="gray"
+        ).pack(pady=40)
+
+    def _quick_topic_search(self, topic):
+        self.search_entry.delete(0, "end")
+        self.search_entry.insert(0, topic)
+        self._search_repos(force_refresh=False)
+
+    def _search_repos(self, force_refresh=False):
         query = self.search_entry.get().strip()
         if not query:
             return
         
+        lang = self.search_lang.get()
+        cache_key = (query.lower(), lang)
+
+        if not force_refresh and cache_key in self._search_cache:
+            self._display_search_results(self._search_cache[cache_key])
+            return
+
         for widget in self.search_results_list.winfo_children():
             widget.destroy()
         
+        loading_box = ctk.CTkFrame(self.search_results_list, fg_color="transparent")
+        loading_box.pack(pady=30)
         ctk.CTkLabel(
-            self.search_results_list,
-            text="Searching...",
-            text_color="gray"
-        ).pack(pady=20)
-        
-        lang = self.search_lang.get()
+            loading_box,
+            text=f"Searching for '{query}'...",
+            font=get_font(13),
+            text_color=("gray40", "gray70")
+        ).pack()
         
         def search():
             try:
                 repos = self.github.search_repos(query, language=lang if lang else None)
-                self.after(0, lambda: self._display_search_results(repos))
+                self._search_cache[cache_key] = repos
+                self.safe_after(0, lambda: self._display_search_results(repos))
             except Exception as err:
                 err_msg = str(err)
-                self.after(0, lambda m=err_msg: self._search_error(m))
+                self.safe_after(0, lambda m=err_msg: self._search_error(m))
         
         threading.Thread(target=search, daemon=True).start()
 
@@ -1718,95 +1947,110 @@ class RepoGrabberApp(ctk.CTk):
             ).pack(pady=40)
             return
         
-        for repo in repos:
-            card = ctk.CTkFrame(self.search_results_list, height=135, corner_radius=12)
-            card.pack(fill="x", pady=6, padx=5)
-            card.pack_propagate(False)
-            
-            # Action buttons packed on RIGHT first
-            btn_frame = ctk.CTkFrame(card, fg_color="transparent", border_width=0)
-            btn_frame.pack(side="right", fill="y", padx=15)
-            
-            inner_action = ctk.CTkFrame(btn_frame, fg_color="transparent")
-            inner_action.pack(expand=True)
+        self._current_render_id += 1
+        current_id = self._current_render_id
+        
+        batch_size = 5
+        def render_chunk(start_idx):
+            if not self.winfo_exists() or self._current_render_id != current_id:
+                return
+            end_idx = min(start_idx + batch_size, len(repos))
+            for i in range(start_idx, end_idx):
+                self._render_single_search_card(repos[i])
+            if end_idx < len(repos):
+                self.after(10, lambda: render_chunk(end_idx))
 
-            ctk.CTkButton(
-                inner_action,
-                text="🌐 GitHub",
-                width=75,
-                height=32,
-                corner_radius=8,
-                fg_color="transparent",
-                border_width=1,
-                border_color=("#D1D5CB", "#2D3730"),
-                text_color=("gray20", "gray85"),
-                font=ctk.CTkFont(family="Inter", size=11),
-                command=lambda u=repo.get("html_url"): webbrowser.open(u) if u else None
-            ).pack(side="left", padx=3)
+        render_chunk(0)
 
-            ctk.CTkButton(
-                inner_action,
-                text="👁️ Readme",
-                width=75,
-                height=32,
-                corner_radius=8,
-                fg_color="transparent",
-                border_width=1,
-                border_color=("#5E6C54", "#10B981"),
-                text_color=("#5E6C54", "#10B981"),
-                font=ctk.CTkFont(family="Inter", size=11, weight="bold"),
-                command=lambda r=repo: self._preview_remote_readme(r)
-            ).pack(side="left", padx=3)
+    def _render_single_search_card(self, repo):
+        card = ctk.CTkFrame(self.search_results_list, height=135, corner_radius=12)
+        card.pack(fill="x", pady=6, padx=5)
+        card.pack_propagate(False)
+        
+        # Action buttons packed on RIGHT first
+        btn_frame = ctk.CTkFrame(card, fg_color="transparent", border_width=0)
+        btn_frame.pack(side="right", fill="y", padx=15)
+        
+        inner_action = ctk.CTkFrame(btn_frame, fg_color="transparent")
+        inner_action.pack(expand=True)
 
-            clone_btn = ctk.CTkButton(
-                inner_action,
-                text="⚡ Clone",
-                width=75,
-                height=32,
-                corner_radius=8,
-                fg_color=("#5E6C54", "#10B981"),
-                hover_color=("#4F5B46", "#059669"),
-                text_color="white",
-                font=ctk.CTkFont(family="Inter", size=11, weight="bold")
-            )
-            clone_btn.configure(command=lambda r=repo, b=clone_btn: self._async_clone_from_search(r, b))
-            clone_btn.pack(side="left", padx=3)
+        ctk.CTkButton(
+            inner_action,
+            text="🌐 GitHub",
+            width=75,
+            height=32,
+            corner_radius=8,
+            fg_color="transparent",
+            border_width=1,
+            border_color=("#D1D5CB", "#2D3730"),
+            text_color=("gray20", "gray85"),
+            font=get_font(11),
+            command=lambda u=repo.get("html_url"): webbrowser.open(u) if u else None
+        ).pack(side="left", padx=3)
 
-            # Info frame packed on LEFT second
-            info_frame = ctk.CTkFrame(card, fg_color="transparent", border_width=0)
-            info_frame.pack(side="left", fill="both", expand=True, padx=20, pady=12)
-            
-            ctk.CTkLabel(
-                info_frame,
-                text=repo['full_name'],
-                font=ctk.CTkFont(family="Inter", size=16, weight="bold"),
-                anchor="w"
-            ).pack(fill="x")
-            
-            desc = repo.get("description") or "No description provided."
-            ctk.CTkLabel(
-                info_frame,
-                text=desc[:115] + "..." if len(desc) > 115 else desc,
-                font=ctk.CTkFont(family="Inter", size=11),
-                text_color=("gray40", "gray70"),
-                anchor="w",
-                justify="left",
-                wraplength=550
-            ).pack(fill="x", pady=4)
-            
-            stats_text = f"★ {repo.get('stargazers_count', 0):,}   ⑂ {repo.get('forks_count', 0):,}"
-            if repo.get("language"):
-                stats_text += f"   ● {repo['language']}"
-            if repo.get("license"):
-                stats_text += f"   ⚖️ {repo['license']}"
-            
-            ctk.CTkLabel(
-                info_frame,
-                text=stats_text,
-                font=ctk.CTkFont(family="Inter", size=11),
-                text_color=config.COLORS["dark"]["accent"],
-                anchor="w"
-            ).pack(fill="x")
+        ctk.CTkButton(
+            inner_action,
+            text="👁️ Readme",
+            width=75,
+            height=32,
+            corner_radius=8,
+            fg_color="transparent",
+            border_width=1,
+            border_color=("#5E6C54", "#10B981"),
+            text_color=("#5E6C54", "#10B981"),
+            font=get_font(11, "bold"),
+            command=lambda r=repo: self._preview_remote_readme(r)
+        ).pack(side="left", padx=3)
+
+        clone_btn = ctk.CTkButton(
+            inner_action,
+            text="⚡ Clone",
+            width=75,
+            height=32,
+            corner_radius=8,
+            fg_color=("#5E6C54", "#10B981"),
+            hover_color=("#4F5B46", "#059669"),
+            text_color="white",
+            font=get_font(11, "bold")
+        )
+        clone_btn.configure(command=lambda r=repo, b=clone_btn: self._async_clone_from_search(r, b))
+        clone_btn.pack(side="left", padx=3)
+
+        # Info frame packed on LEFT second
+        info_frame = ctk.CTkFrame(card, fg_color="transparent", border_width=0)
+        info_frame.pack(side="left", fill="both", expand=True, padx=20, pady=12)
+        
+        ctk.CTkLabel(
+            info_frame,
+            text=repo['full_name'],
+            font=get_font(16, "bold"),
+            anchor="w"
+        ).pack(fill="x")
+        
+        desc = repo.get("description") or "No description provided."
+        ctk.CTkLabel(
+            info_frame,
+            text=desc[:115] + "..." if len(desc) > 115 else desc,
+            font=get_font(11),
+            text_color=("gray40", "gray70"),
+            anchor="w",
+            justify="left",
+            wraplength=550
+        ).pack(fill="x", pady=4)
+        
+        stats_text = f"★ {repo.get('stargazers_count', 0):,}   ⑂ {repo.get('forks_count', 0):,}"
+        if repo.get("language"):
+            stats_text += f"   ● {repo['language']}"
+        if repo.get("license"):
+            stats_text += f"   ⚖️ {repo['license']}"
+        
+        ctk.CTkLabel(
+            info_frame,
+            text=stats_text,
+            font=get_font(11),
+            text_color=config.COLORS["dark"]["accent"],
+            anchor="w"
+        ).pack(fill="x")
 
     def _search_error(self, error):
         for widget in self.search_results_list.winfo_children():
@@ -1847,7 +2091,7 @@ class RepoGrabberApp(ctk.CTk):
                         button.configure(state="normal", text="⚡ Clone")
                     messagebox.showerror("Error", result.get("error", "Failed to clone repository"))
 
-            self.after(0, on_done)
+            self.safe_after(0, on_done)
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -1864,7 +2108,7 @@ class RepoGrabberApp(ctk.CTk):
         ctk.CTkLabel(
             view,
             text="Add Repository",
-            font=ctk.CTkFont(family="Inter", size=28, weight="bold")
+            font=get_font(28, "bold")
         ).pack(pady=(40, 10))
         
         ctk.CTkLabel(
@@ -1888,14 +2132,14 @@ class RepoGrabberApp(ctk.CTk):
             width=240,
             height=48,
             corner_radius=12,
-            font=ctk.CTkFont(weight="bold"),
+            font=get_font(12, "bold"),
             fg_color=("#5E6C54", "#10B981"),
             hover_color=("#4F5B46", "#059669"),
             text_color="white",
             command=self._add_repo
         ).pack(pady=10)
         
-        self.add_status = ctk.CTkLabel(view, text="", font=ctk.CTkFont(size=13))
+        self.add_status = ctk.CTkLabel(view, text="", font=get_font(13))
         self.add_status.pack(pady=20)
 
     def _add_repo(self):
@@ -1908,7 +2152,7 @@ class RepoGrabberApp(ctk.CTk):
         
         def clone():
             result = self.repo_manager.add_repo(url)
-            self.after(0, lambda: self._add_repo_result(result))
+            self.safe_after(0, lambda: self._add_repo_result(result))
         
         threading.Thread(target=clone, daemon=True).start()
 
@@ -1932,13 +2176,13 @@ class RepoGrabberApp(ctk.CTk):
         ctk.CTkLabel(
             view,
             text="Analysis Agent & Project Oracle",
-            font=ctk.CTkFont(family="Inter", size=28, weight="bold")
+            font=get_font(28, "bold")
         ).pack(anchor="w", padx=20, pady=(30, 10))
         
         model_frame = ctk.CTkFrame(view, fg_color="transparent", border_width=0)
         model_frame.pack(fill="x", padx=20, pady=10)
         
-        ctk.CTkLabel(model_frame, text="Intelligence Engine:", font=ctk.CTkFont(weight="bold")).pack(side="left", padx=(0, 10))
+        ctk.CTkLabel(model_frame, text="Intelligence Engine:", font=get_font(12, "bold")).pack(side="left", padx=(0, 10))
         
         self.model_selector = ctk.CTkComboBox(
             model_frame,
@@ -1964,7 +2208,7 @@ class RepoGrabberApp(ctk.CTk):
         )
         self.refresh_models_btn.pack(side="left", padx=5)
         
-        self.ollama_status = ctk.CTkLabel(model_frame, text="Checking status...", font=ctk.CTkFont(size=12))
+        self.ollama_status = ctk.CTkLabel(model_frame, text="Checking status...", font=get_font(12))
         self.ollama_status.pack(side="right", padx=10)
         
         threading.Thread(target=self._check_ollama, daemon=True).start()
@@ -1974,7 +2218,7 @@ class RepoGrabberApp(ctk.CTk):
 
         tpl_bar = ctk.CTkFrame(input_frame, fg_color="transparent")
         tpl_bar.pack(fill="x", padx=20, pady=(15, 5))
-        ctk.CTkLabel(tpl_bar, text="Quick Prompt Starters:", font=ctk.CTkFont(size=11, weight="bold")).pack(side="left", padx=(0, 8))
+        ctk.CTkLabel(tpl_bar, text="Quick Prompt Starters:", font=get_font(11, "bold")).pack(side="left", padx=(0, 8))
 
         starters = [
             ("🏛️ Architecture Review", "Analyze the system architecture of this code, identify patterns, and evaluate scalability:"),
@@ -1990,7 +2234,7 @@ class RepoGrabberApp(ctk.CTk):
                 corner_radius=6,
                 fg_color=("gray90", "#202924"),
                 text_color=("#1D1D1F", "#ECF0ED"),
-                font=ctk.CTkFont(size=10),
+                font=get_font(10),
                 command=lambda p=prompt_text: self._apply_prompt_template(p)
             ).pack(side="left", padx=3)
         
@@ -2010,7 +2254,7 @@ class RepoGrabberApp(ctk.CTk):
             fg_color=("#5E6C54", "#10B981"),
             hover_color=("#4F5B46", "#059669"),
             text_color="white",
-            font=ctk.CTkFont(family="Inter", weight="bold"),
+            font=get_font(12, "bold"),
             command=self._explain_code
         )
         self.run_agent_btn.pack(side="left")
@@ -2034,7 +2278,7 @@ class RepoGrabberApp(ctk.CTk):
         ctk.CTkLabel(
             self.ai_response_frame, 
             text="Agent Intelligence Output",
-            font=ctk.CTkFont(weight="bold")
+            font=get_font(12, "bold")
         ).pack(anchor="w", padx=20, pady=(20, 10))
         
         self.ai_response = ctk.CTkTextbox(self.ai_response_frame, height=300, border_width=0,
@@ -2050,7 +2294,7 @@ class RepoGrabberApp(ctk.CTk):
             fg_color=("#5E6C54", "#10B981"),
             hover_color=("#4F5B46", "#059669"),
             text_color="white",
-            font=ctk.CTkFont(family="Inter", weight="bold"),
+            font=get_font(12, "bold"),
             command=self._copy_response
         ).pack(pady=20)
 
@@ -2072,7 +2316,7 @@ class RepoGrabberApp(ctk.CTk):
         ctk.CTkLabel(
             view,
             text="Settings",
-            font=ctk.CTkFont(family="Inter", size=28, weight="bold")
+            font=get_font(28, "bold")
         ).pack(anchor="w", padx=30, pady=(40, 20))
         
         # Section: Storage
@@ -2082,14 +2326,14 @@ class RepoGrabberApp(ctk.CTk):
         ctk.CTkLabel(
             storage_frame,
             text="Local Storage",
-            font=ctk.CTkFont(weight="bold")
+            font=get_font(12, "bold")
         ).pack(anchor="w", padx=20, pady=(20, 5))
         
         ctk.CTkLabel(
             storage_frame,
             text=str(self.repo_manager.get_repos_path()),
             text_color=("gray50", "gray60"),
-            font=ctk.CTkFont(size=12)
+            font=get_font(12)
         ).pack(anchor="w", padx=20, pady=(0, 15))
         
         ctk.CTkButton(
@@ -2110,12 +2354,15 @@ class RepoGrabberApp(ctk.CTk):
         ctk.CTkLabel(
             auth_frame,
             text="GitHub Authentication",
-            font=ctk.CTkFont(weight="bold")
+            font=get_font(12, "bold")
         ).pack(anchor="w", padx=20, pady=(20, 5))
 
-        rate = self.github.get_rate_limit_status()
-        auth_status = "Authenticated" if rate.get("authenticated") else "Unauthenticated (60 req/hr)"
-        ctk.CTkLabel(auth_frame, text=f"Status: {auth_status} - Quota: {rate.get('remaining')}/{rate.get('limit')}", font=ctk.CTkFont(size=12)).pack(anchor="w", padx=20)
+        self.settings_auth_lbl = ctk.CTkLabel(
+            auth_frame,
+            text="Checking authentication status...",
+            font=get_font(12)
+        )
+        self.settings_auth_lbl.pack(anchor="w", padx=20)
 
         ctk.CTkButton(
             auth_frame,
@@ -2135,10 +2382,10 @@ class RepoGrabberApp(ctk.CTk):
         ctk.CTkLabel(
             ollama_frame,
             text="Ollama Engine",
-            font=ctk.CTkFont(weight="bold")
+            font=get_font(12, "bold")
         ).pack(anchor="w", padx=20, pady=(20, 5))
         
-        ctk.CTkLabel(ollama_frame, text="Endpoint URL", font=ctk.CTkFont(size=12)).pack(anchor="w", padx=20)
+        ctk.CTkLabel(ollama_frame, text="Endpoint URL", font=get_font(12)).pack(anchor="w", padx=20)
         
         self.ollama_url_entry = ctk.CTkEntry(ollama_frame, width=400, height=36, corner_radius=8)
         self.ollama_url_entry.insert(0, self.ollama.base_url)
@@ -2181,18 +2428,42 @@ class RepoGrabberApp(ctk.CTk):
                     hover_color=("gray90", "#1D2620")
                 )
 
+        # Lazy loading triggers for heavy remote views
+        if view_name == "trending":
+            if not self._trending_loaded:
+                self._trending_loaded = True
+                self._load_trending()
+        elif view_name == "learner":
+            if not self._learner_loaded:
+                self._learner_loaded = True
+                self._load_good_first_issues()
+        elif view_name == "overview":
+            self._async_update_kpis(force=False)
+        elif view_name == "settings":
+            self._async_update_kpis(force=False)
+
+    def _focus_search(self):
+        self._switch_view("search")
+        if hasattr(self, "search_entry"):
+            self.search_entry.focus_set()
+
+    def _on_escape(self):
+        manager = ToolTipManager.get_instance()
+        if manager:
+            manager.hide()
+
     def _update_repo(self, path):
         def update():
             try:
                 result = self.repo_manager.update_repo(path)
                 if result.get("status") == "updated":
-                    self.after(0, lambda: messagebox.showinfo("Success", "Repository updated!"))
+                    self.safe_after(0, lambda: messagebox.showinfo("Success", "Repository updated!"))
                 else:
                     err = result.get("error", "Update failed")
-                    self.after(0, lambda m=err: messagebox.showerror("Error", m))
-                self.after(0, self._load_repos)
+                    self.safe_after(0, lambda m=err: messagebox.showerror("Error", m))
+                self.safe_after(0, self._load_repos)
             except Exception as e:
-                self.after(0, lambda m=str(e): messagebox.showerror("Error", m))
+                self.safe_after(0, lambda m=str(e): messagebox.showerror("Error", m))
         
         threading.Thread(target=update, daemon=True).start()
 
@@ -2207,17 +2478,17 @@ class RepoGrabberApp(ctk.CTk):
         header.grid(row=0, column=0, sticky="ew", padx=40, pady=(40, 10))
         
         title_lbl = ctk.CTkLabel(header, text=f"🏛️ Architectural Audit: {repo['name']}", 
-                                font=ctk.CTkFont(family="Inter", size=24, weight="bold"))
+                                font=get_font(24, "bold"))
         title_lbl.pack(side="left")
         
         progress_frame = ctk.CTkFrame(audit_win, height=44, fg_color=("#E8EDE6", "#1D2620"))
         progress_frame.grid(row=1, column=0, sticky="ew", padx=40, pady=10)
         
         status_label = ctk.CTkLabel(progress_frame, text="⚙️ Initializing Project Oracle...",
-                                   font=ctk.CTkFont(family="Inter", size=13))
+                                   font=get_font(13))
         status_label.pack(pady=8, padx=20, side="left")
         
-        output_txt = ctk.CTkTextbox(audit_win, font=ctk.CTkFont(family="Consolas", size=13),
+        output_txt = ctk.CTkTextbox(audit_win, font=get_font(13, family=CODE_FONT),
                                    fg_color=("#FFFFFF", "#1E2621"), 
                                    text_color=("#1D1D1F", "#ECF0ED"),
                                    border_width=0)
@@ -2235,21 +2506,21 @@ class RepoGrabberApp(ctk.CTk):
 
         def run():
             try:
-                self.after(0, lambda: status_label.configure(text="🔍 Deep Scanning Repository Structure..."))
+                self.safe_after(0, lambda: status_label.configure(text="🔍 Deep Scanning Repository Structure..."))
                 context = self.repo_manager.get_project_context(repo["path"])
                 if not context or not context.get("file_tree"):
                     raise Exception("No project files found. Is the repository empty?")
                 
-                self.after(0, lambda: status_label.configure(text="🧠 Reasoning through Project Architecture..."))
+                self.safe_after(0, lambda: status_label.configure(text="🧠 Reasoning through Project Architecture..."))
                 audit = self.ollama.perform_architectural_audit(context)
                 if not audit:
                     raise Exception("AI failed to generate an audit report.")
                 
-                self.after(0, lambda: status_label.configure(text="🏷️ Generating Semantic Smart Tags..."))
+                self.safe_after(0, lambda: status_label.configure(text="🏷️ Generating Semantic Smart Tags..."))
                 readme = self.repo_manager.get_repo_readme(repo["path"])
                 tags = self.ollama.suggest_smart_tags(readme, context)
                 
-                self.after(0, lambda: status_label.configure(text="💾 Persisting insights to Knowledge Base..."))
+                self.safe_after(0, lambda: status_label.configure(text="💾 Persisting insights to Knowledge Base..."))
                 from database import get_database
                 db = get_database()
                 
@@ -2269,11 +2540,11 @@ class RepoGrabberApp(ctk.CTk):
                     db_repo.smart_tags = tags
                     db.save_repository(db_repo)
                 
-                self.after(0, lambda a=audit: self._show_audit_results(output_txt, status_label, a))
-                self.after(0, self._load_repos)
+                self.safe_after(0, lambda a=audit: self._show_audit_results(output_txt, status_label, a))
+                self.safe_after(0, self._load_repos)
                 
             except Exception as e:
-                self.after(0, lambda m=str(e): status_label.configure(text=f"❌ Error: {m}"))
+                self.safe_after(0, lambda m=str(e): status_label.configure(text=f"❌ Error: {m}"))
                 logger.error(f"Audit error for {repo['name']}: {e}")
 
         threading.Thread(target=run, daemon=True).start()
@@ -2289,10 +2560,10 @@ class RepoGrabberApp(ctk.CTk):
             try:
                 results = self.repo_manager.update_all_repos()
                 success = sum(1 for r in results if r.get("status") == "updated")
-                self.after(0, lambda: messagebox.showinfo("Update Complete", f"Updated {success} of {len(results)} repositories"))
-                self.after(0, self._load_repos)
+                self.safe_after(0, lambda: messagebox.showinfo("Update Complete", f"Updated {success} of {len(results)} repositories"))
+                self.safe_after(0, self._load_repos)
             except Exception as e:
-                self.after(0, lambda m=str(e): messagebox.showerror("Error", m))
+                self.safe_after(0, lambda m=str(e): messagebox.showerror("Error", m))
         
         threading.Thread(target=update, daemon=True).start()
 
@@ -2343,7 +2614,7 @@ class RepoGrabberApp(ctk.CTk):
                     self.model_selector.set(models[0])
                     self.ollama.set_model(models[0])
         
-        self.after(0, update_ui)
+        self.safe_after(0, update_ui)
 
     def _change_model(self, model):
         self.ollama.set_model(model)
@@ -2361,11 +2632,11 @@ class RepoGrabberApp(ctk.CTk):
         def run():
             try:
                 response = self.ollama.run_analysis_agent(code)
-                self.after(0, lambda: self._show_ai_response(response))
+                self.safe_after(0, lambda: self._show_ai_response(response))
             except Exception as e:
-                self.after(0, lambda e=e: self._show_ai_response(f"Agent Error: {e}"))
+                self.safe_after(0, lambda e=e: self._show_ai_response(f"Agent Error: {e}"))
             finally:
-                self.after(0, lambda: self.run_agent_btn.configure(state="normal"))
+                self.safe_after(0, lambda: self.run_agent_btn.configure(state="normal"))
         
         threading.Thread(target=run, daemon=True).start()
 

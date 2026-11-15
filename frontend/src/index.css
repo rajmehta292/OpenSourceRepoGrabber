@@ -1,0 +1,142 @@
+@layer reset, astryx-base, osrg-app;
+
+@import '@astryxdesign/core/reset.css';
+@import '@astryxdesign/core/astryx.css';
+
+@layer osrg-app {
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+
+  .osrg-page {
+    padding: 24px 28px 36px;
+    max-width: 1320px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .osrg-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 14px;
+  }
+
+  .osrg-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px;
+  }
+
+  .osrg-grid-4 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 12px;
+  }
+
+  .osrg-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .osrg-file-split {
+    display: grid;
+    grid-template-columns: minmax(240px, 320px) 1fr;
+    gap: 16px;
+    min-height: 460px;
+    max-height: 62dvh;
+  }
+
+  .osrg-file-list {
+    overflow-y: auto;
+    border-radius: 10px;
+    border: 1px solid var(--border-subtle, rgba(128, 128, 128, 0.25));
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .osrg-file-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    text-align: left;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 6px 8px;
+    font-size: 12.5px;
+    font-family: var(--font-mono, ui-monospace, Consolas, monospace);
+    color: inherit;
+    cursor: pointer;
+    word-break: break-all;
+  }
+
+  .osrg-file-btn:hover {
+    background: rgba(16, 185, 129, 0.12);
+  }
+
+  .osrg-file-btn[data-active='true'] {
+    background: rgba(16, 185, 129, 0.2);
+    font-weight: 600;
+  }
+
+  .osrg-code-pane {
+    overflow: auto;
+    border-radius: 10px;
+    min-width: 0;
+  }
+
+  .osrg-filter-pill {
+    cursor: pointer;
+    border: 1px solid rgba(128, 128, 128, 0.28);
+    background: transparent;
+    color: inherit;
+    border-radius: 999px;
+    padding: 5px 12px;
+    font-size: 12.5px;
+    font-weight: 500;
+    transition: background-color 0.14s ease, border-color 0.14s ease;
+  }
+
+  .osrg-filter-pill:hover {
+    border-color: #10b981;
+  }
+
+  .osrg-filter-pill[data-active='true'] {
+    background: #10b981;
+    border-color: #10b981;
+    color: #071911;
+    font-weight: 600;
+  }
+
+  /* Smooth Chromium scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(110, 130, 118, 0.35);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(16, 185, 129, 0.55);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+}

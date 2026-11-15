@@ -17,8 +17,21 @@ if sys.platform == "win32":
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-# Import and run the GUI
-from gui import main
+# Import and run the GUI (WebView2 + Meta Astryx default; pass --tk for legacy CustomTkinter)
+def _launch() -> None:
+    if "--tk" in sys.argv:
+        from gui import main as tk_main
+        tk_main()
+        return
+
+    from webview_app import FRONTEND_DIST_DIR, main as webview_main
+    if (FRONTEND_DIST_DIR / "index.html").exists():
+        webview_main()
+    else:
+        print("Frontend build not found at frontend/dist — falling back to legacy Tkinter UI.")
+        from gui import main as tk_main
+        tk_main()
+
 
 if __name__ == "__main__":
     print("=" * 50)
@@ -27,9 +40,10 @@ if __name__ == "__main__":
     print()
     print("Starting application...")
     print()
-    
+
     try:
-        main()
+        _launch()
     except Exception as e:
         print(f"Error: {e}")
-        input("Press Enter to exit...")
+        if "--no-pause" not in sys.argv and sys.stdin and sys.stdin.isatty():
+            input("Press Enter to exit...")
